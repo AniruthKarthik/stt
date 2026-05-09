@@ -1,0 +1,324 @@
+[2026-05-09 11:22:40] Starting recording (hold key)...
+[2026-05-09 11:22:59] Starting recording (hold key)...
+[2026-05-09 11:24:31] Cleaning up...
+[2026-05-09 11:24:31] Waiting for key 201 release...
+[2026-05-09 11:24:53] Cleaning up...
+[2026-05-09 11:24:53] Cleaning up...
+[2026-05-09 11:26:26] Starting recording...
+[2026-05-09 11:28:54] --- Press Event ---
+[2026-05-09 11:30:19] Recording started (PID 10114)
+[2026-05-09 11:30:21] --- Release Event ---
+[2026-05-09 11:30:21] Recording stopped (PID 10114).
+[2026-05-09 11:30:21] Transcribing...
+[2026-05-09 11:33:57] --- Triggered ---
+[2026-05-09 11:33:57] Recording started (PID 10776)
+[2026-05-09 11:33:57] Waiting for any key release...
+[2026-05-09 11:35:34] --- STT Start ---
+[2026-05-09 11:35:34] Waiting for key release...
+[2026-05-09 11:35:42] Release event: event3   KEYBOARD_KEY                 +2.290s	*** (-1) released
+[2026-05-09 11:35:44] Recording stopped.
+[2026-05-09 11:35:44] Transcribing...
+whisper_init_from_file_with_params_no_state: loading model from '/home/ani/stt/models/ggml-base.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 1
+whisper_init_with_params_no_state: backends   = 1
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 512
+whisper_model_load: n_audio_head  = 8
+whisper_model_load: n_audio_layer = 6
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 512
+whisper_model_load: n_text_head   = 8
+whisper_model_load: n_text_layer  = 6
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 2 (base)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =   147.37 MB
+whisper_model_load: model size    =  147.37 MB
+whisper_backend_init_gpu: device 0: CPU (type: 0)
+whisper_backend_init_gpu: no GPU found
+whisper_init_state: kv self size  =    6.29 MB
+whisper_init_state: kv cross size =   18.87 MB
+whisper_init_state: kv pad  size  =    3.15 MB
+whisper_init_state: compute buffer (conv)   =   16.28 MB
+whisper_init_state: compute buffer (encode) =   23.09 MB
+whisper_init_state: compute buffer (cross)  =    4.66 MB
+whisper_init_state: compute buffer (decode) =   96.37 MB
+
+system_info: n_threads = 4 / 22 | WHISPER : COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | OPENMP = 1 | REPACK = 1 | 
+
+main: processing '/home/ani/stt/tmp/stt_recording.wav' (147445 samples, 9.2 sec), 4 threads, 1 processors, 5 beams + best of 5, lang = en, task = transcribe, timestamps = 0 ...
+
+
+whisper_print_timings:     load time =   152.52 ms
+whisper_print_timings:     fallbacks =   0 p /   0 h
+whisper_print_timings:      mel time =    19.39 ms
+whisper_print_timings:   sample time =    53.84 ms /    98 runs (     0.55 ms per run)
+whisper_print_timings:   encode time =  1052.32 ms /     1 runs (  1052.32 ms per run)
+whisper_print_timings:   decode time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:   batchd time =   307.78 ms /    95 runs (     3.24 ms per run)
+whisper_print_timings:   prompt time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:    total time =  1646.32 ms
+[2026-05-09 11:35:45] Result: 'I don't think this will work no more, but we can see if it is okay.'
+[2026-05-09 11:35:45] Injecting...
+[2026-05-09 11:35:48] Done.
+[2026-05-09 11:35:55] --- STT Start ---
+[2026-05-09 11:35:55] Waiting for key release...
+[2026-05-09 11:36:16] Recording stopped.
+[2026-05-09 11:36:16] Transcribing...
+[2026-05-09 11:36:16] --- STT Start ---
+error: input file not found '/home/ani/stt/tmp/stt_recording.wav'
+error: no input files specified
+
+usage: /home/ani/stt/whisper.cpp/build/bin/whisper-cli [options] file0 file1 ...
+supported audio formats: flac, mp3, ogg, wav
+
+options:
+  -h,        --help                 [default] show this help message and exit
+  -t N,      --threads N            [4      ] number of threads to use during computation
+  -p N,      --processors N         [1      ] number of processors to use during computation
+  -ot N,     --offset-t N           [0      ] time offset in milliseconds
+  -on N,     --offset-n N           [0      ] segment index offset
+  -d  N,     --duration N           [0      ] duration of audio to process in milliseconds
+  -mc N,     --max-context N        [-1     ] maximum number of text context tokens to store
+  -ml N,     --max-len N            [0      ] maximum segment length in characters
+  -sow,      --split-on-word        [false  ] split on word rather than on token
+  -bo N,     --best-of N            [5      ] number of best candidates to keep
+  -bs N,     --beam-size N          [5      ] beam size for beam search
+  -ac N,     --audio-ctx N          [0      ] audio context size (0 - all)
+  -wt N,     --word-thold N         [0.01   ] word timestamp probability threshold
+  -et N,     --entropy-thold N      [2.40   ] entropy threshold for decoder fail
+  -lpt N,    --logprob-thold N      [-1.00  ] log probability threshold for decoder fail
+  -nth N,    --no-speech-thold N    [0.60   ] no speech threshold
+  -tp,       --temperature N        [0.00   ] The sampling temperature, between 0 and 1
+  -tpi,      --temperature-inc N    [0.20   ] The increment of temperature, between 0 and 1
+  -debug,    --debug-mode           [false  ] enable debug mode (eg. dump log_mel)
+  -tr,       --translate            [false  ] translate from source language to english
+  -di,       --diarize              [false  ] stereo audio diarization
+  -tdrz,     --tinydiarize          [false  ] enable tinydiarize (requires a tdrz model)
+  -nf,       --no-fallback          [false  ] do not use temperature fallback while decoding
+  -otxt,     --output-txt           [false  ] output result in a text file
+  -ovtt,     --output-vtt           [false  ] output result in a vtt file
+  -osrt,     --output-srt           [false  ] output result in a srt file
+  -olrc,     --output-lrc           [false  ] output result in a lrc file
+  -owts,     --output-words         [false  ] output script for generating karaoke video
+  -fp,       --font-path            [/System/Library/Fonts/Supplemental/Courier New Bold.ttf] path to a monospace font for karaoke video
+  -ocsv,     --output-csv           [false  ] output result in a CSV file
+  -oj,       --output-json          [false  ] output result in a JSON file
+  -ojf,      --output-json-full     [false  ] include more information in the JSON file
+  -of FNAME, --output-file FNAME    [       ] output file path (without file extension)
+  -np,       --no-prints            [false  ] do not print anything other than the results
+  -ps,       --print-special        [false  ] print special tokens
+  -pc,       --print-colors         [false  ] print colors
+             --print-confidence     [false  ] print confidence
+  -pp,       --print-progress       [false  ] print progress
+  -nt,       --no-timestamps        [true   ] do not print timestamps
+  -l LANG,   --language LANG        [en     ] spoken language ('auto' for auto-detect)
+  -dl,       --detect-language      [false  ] exit after automatically detecting language
+             --prompt PROMPT        [       ] initial prompt (max n_text_ctx/2 tokens)
+             --carry-initial-prompt [false  ] always prepend initial prompt
+  -m FNAME,  --model FNAME          [/home/ani/stt/models/ggml-base.en.bin] model path
+  -f FNAME,  --file FNAME           [       ] input audio file path
+  -oved D,   --ov-e-device DNAME    [CPU    ] the OpenVINO device used for encode inference
+  -dtw MODEL --dtw MODEL            [       ] compute token-level timestamps
+  -ls,       --log-score            [false  ] log best decoder scores of tokens
+  -ng,       --no-gpu               [false  ] disable GPU
+  -dev N,    --device N             [0      ] GPU device ID (default: 0)
+  -fa,       --flash-attn           [true   ] enable flash attention
+  -nfa,      --no-flash-attn        [false  ] disable flash attention
+  -sns,      --suppress-nst         [false  ] suppress non-speech tokens
+  --suppress-regex REGEX            [       ] regular expression matching tokens to suppress
+  --grammar GRAMMAR                 [       ] GBNF grammar to guide decoding
+  --grammar-rule RULE               [       ] top-level GBNF grammar rule name
+  --grammar-penalty N               [100.0  ] scales down logits of nongrammar tokens
+
+Voice Activity Detection (VAD) options:
+             --vad                           [false  ] enable Voice Activity Detection (VAD)
+  -vm FNAME, --vad-model FNAME               [       ] VAD model path
+  -vt N,     --vad-threshold N               [0.50   ] VAD threshold for speech recognition
+  -vspd N,   --vad-min-speech-duration-ms  N [250    ] VAD min speech duration (0.0-1.0)
+  -vsd N,    --vad-min-silence-duration-ms N [100    ] VAD min silence duration (to split segments)
+[2026-05-09 11:36:16] Waiting for key release...
+  -vmsd N,   --vad-max-speech-duration-s   N [FLT_MAX] VAD max speech duration (auto-split longer)
+  -vp N,     --vad-speech-pad-ms           N [30     ] VAD speech padding (extend segments)
+  -vo N,     --vad-samples-overlap         N [0.10   ] VAD samples overlap (seconds between segments)
+
+[2026-05-09 11:36:16] Result: ''
+[2026-05-09 11:36:16] Hallucination ignored.
+[2026-05-09 11:36:23] Release event: event2   KEYBOARD_KEY                 +7.335s	KEY_F23 (193) released
+[2026-05-09 11:36:23] Recording stopped.
+[2026-05-09 11:36:23] Transcribing...
+whisper_init_from_file_with_params_no_state: loading model from '/home/ani/stt/models/ggml-base.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 1
+whisper_init_with_params_no_state: backends   = 1
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 512
+whisper_model_load: n_audio_head  = 8
+whisper_model_load: n_audio_layer = 6
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 512
+whisper_model_load: n_text_head   = 8
+whisper_model_load: n_text_layer  = 6
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 2 (base)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =   147.37 MB
+whisper_model_load: model size    =  147.37 MB
+whisper_backend_init_gpu: device 0: CPU (type: 0)
+whisper_backend_init_gpu: no GPU found
+whisper_init_state: kv self size  =    6.29 MB
+whisper_init_state: kv cross size =   18.87 MB
+whisper_init_state: kv pad  size  =    3.15 MB
+whisper_init_state: compute buffer (conv)   =   16.28 MB
+whisper_init_state: compute buffer (encode) =   23.09 MB
+whisper_init_state: compute buffer (cross)  =    4.66 MB
+whisper_init_state: compute buffer (decode) =   96.37 MB
+
+system_info: n_threads = 4 / 22 | WHISPER : COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | OPENMP = 1 | REPACK = 1 | 
+
+main: processing '/home/ani/stt/tmp/stt_recording.wav' (122869 samples, 7.7 sec), 4 threads, 1 processors, 5 beams + best of 5, lang = en, task = transcribe, timestamps = 0 ...
+
+
+whisper_print_timings:     load time =   152.40 ms
+whisper_print_timings:     fallbacks =   0 p /   0 h
+whisper_print_timings:      mel time =    18.11 ms
+whisper_print_timings:   sample time =    58.80 ms /   100 runs (     0.59 ms per run)
+whisper_print_timings:   encode time =  1076.85 ms /     1 runs (  1076.85 ms per run)
+whisper_print_timings:   decode time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:   batchd time =   322.29 ms /    97 runs (     3.32 ms per run)
+whisper_print_timings:   prompt time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:    total time =  1687.84 ms
+[2026-05-09 11:36:25] Result: 'So yeah, it is finally working. Hello, hello, hello back to exchange.'
+[2026-05-09 11:36:25] Injecting...
+[2026-05-09 11:36:28] Done.
+[2026-05-09 11:36:30] --- STT Start ---
+[2026-05-09 11:36:30] Waiting for key release...
+[2026-05-09 11:36:33] Release event: event2   KEYBOARD_KEY                 +2.775s	KEY_F23 (193) released
+[2026-05-09 11:36:34] Recording stopped.
+[2026-05-09 11:36:34] Transcribing...
+whisper_init_from_file_with_params_no_state: loading model from '/home/ani/stt/models/ggml-base.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 1
+whisper_init_with_params_no_state: backends   = 1
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 512
+whisper_model_load: n_audio_head  = 8
+whisper_model_load: n_audio_layer = 6
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 512
+whisper_model_load: n_text_head   = 8
+whisper_model_load: n_text_layer  = 6
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 2 (base)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =   147.37 MB
+whisper_model_load: model size    =  147.37 MB
+whisper_backend_init_gpu: device 0: CPU (type: 0)
+whisper_backend_init_gpu: no GPU found
+whisper_init_state: kv self size  =    6.29 MB
+whisper_init_state: kv cross size =   18.87 MB
+whisper_init_state: kv pad  size  =    3.15 MB
+whisper_init_state: compute buffer (conv)   =   16.28 MB
+whisper_init_state: compute buffer (encode) =   23.09 MB
+whisper_init_state: compute buffer (cross)  =    4.66 MB
+whisper_init_state: compute buffer (decode) =   96.37 MB
+
+system_info: n_threads = 4 / 22 | WHISPER : COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | OPENMP = 1 | REPACK = 1 | 
+
+main: processing '/home/ani/stt/tmp/stt_recording.wav' (47093 samples, 2.9 sec), 4 threads, 1 processors, 5 beams + best of 5, lang = en, task = transcribe, timestamps = 0 ...
+
+
+whisper_print_timings:     load time =   148.64 ms
+whisper_print_timings:     fallbacks =   0 p /   0 h
+whisper_print_timings:      mel time =     8.67 ms
+whisper_print_timings:   sample time =    24.30 ms /    43 runs (     0.57 ms per run)
+whisper_print_timings:   encode time =  1087.64 ms /     1 runs (  1087.64 ms per run)
+whisper_print_timings:   decode time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:   batchd time =   145.21 ms /    40 runs (     3.63 ms per run)
+whisper_print_timings:   prompt time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:    total time =  1471.17 ms
+[2026-05-09 11:36:35] Result: 'Hello, is it working or not?'
+[2026-05-09 11:36:35] Injecting...
+[2026-05-09 11:36:36] Done.
+[2026-05-09 11:36:40] --- STT Start ---
+[2026-05-09 11:36:40] Waiting for key release...
+[2026-05-09 11:36:46] Release event: event2   KEYBOARD_KEY                 +5.785s	KEY_F23 (193) released
+[2026-05-09 11:36:47] Recording stopped.
+[2026-05-09 11:36:47] Transcribing...
+whisper_init_from_file_with_params_no_state: loading model from '/home/ani/stt/models/ggml-base.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 1
+whisper_init_with_params_no_state: backends   = 1
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 512
+whisper_model_load: n_audio_head  = 8
+whisper_model_load: n_audio_layer = 6
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 512
+whisper_model_load: n_text_head   = 8
+whisper_model_load: n_text_layer  = 6
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 2 (base)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =   147.37 MB
+whisper_model_load: model size    =  147.37 MB
+whisper_backend_init_gpu: device 0: CPU (type: 0)
+whisper_backend_init_gpu: no GPU found
+whisper_init_state: kv self size  =    6.29 MB
+whisper_init_state: kv cross size =   18.87 MB
+whisper_init_state: kv pad  size  =    3.15 MB
+whisper_init_state: compute buffer (conv)   =   16.28 MB
+whisper_init_state: compute buffer (encode) =   23.09 MB
+whisper_init_state: compute buffer (cross)  =    4.66 MB
+whisper_init_state: compute buffer (decode) =   96.37 MB
+
+system_info: n_threads = 4 / 22 | WHISPER : COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | OPENMP = 1 | REPACK = 1 | 
+
+main: processing '/home/ani/stt/tmp/stt_recording.wav' (96245 samples, 6.0 sec), 4 threads, 1 processors, 5 beams + best of 5, lang = en, task = transcribe, timestamps = 0 ...
+
+
+whisper_print_timings:     load time =   160.73 ms
+whisper_print_timings:     fallbacks =   0 p /   0 h
+whisper_print_timings:      mel time =    15.34 ms
+whisper_print_timings:   sample time =    63.62 ms /   104 runs (     0.61 ms per run)
+whisper_print_timings:   encode time =  1070.77 ms /     1 runs (  1070.77 ms per run)
+whisper_print_timings:   decode time =    22.71 ms /     3 runs (     7.57 ms per run)
+whisper_print_timings:   batchd time =   315.58 ms /    98 runs (     3.22 ms per run)
+whisper_print_timings:   prompt time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:    total time =  1707.60 ms
+[2026-05-09 11:36:48] Result: 'Okay, so as I flow it is not about to talk, it is instead press talk release.'
+[2026-05-09 11:36:48] Injecting...
+[2026-05-09 11:36:51] Done.

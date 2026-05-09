@@ -24,11 +24,9 @@ notify() {
 start_recording() {
     if [[ -f "$PID_FILE" ]]; then
         local OLD_PID=$(cat "$PID_FILE")
-        if kill -0 "$OLD_PID" 2>/dev/null; then
-            exit 0
-        fi
+        if kill -0 "$OLD_PID" 2>/dev/null; then exit 0; fi
     fi
-    log "--- Triggered ---"
+    log "--- STT Start ---"
     notify "Listening..."
     rm -f "$AUDIO_FILE"
     arecord -f cd -q "$AUDIO_FILE" &
@@ -46,7 +44,7 @@ stop_recording() {
     fi
     log "Recording stopped."
     if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
-        log "Error: No audio captured."
+        log "Error: Audio file empty."
         return
     fi
     log "Transcribing..."
@@ -73,9 +71,14 @@ stop_recording() {
 # --- Main ---
 start_recording
 
-# Wait for release (max 15 seconds)
-log "Waiting for release..."
-timeout 15 libinput debug-events | grep --line-buffered "released" | read -r RELEASE_EVENT
-log "Release event: $RELEASE_EVENT"
+# Wait for release using libinput
+log "Waiting for key release..."
+# Watch event2 (internal kbd) and event3 (receiver)
+timeout 20 libinput debug-events /dev/input/event2 /dev/input/event3 | while read -r line; do
+    if [[ "$line" == *"released"* ]]; then
+        log "Release event: $line"
+        break
+    fi
+done
 
 stop_recording
