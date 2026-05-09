@@ -1,6 +1,6 @@
-# Fedora STT (Speech-to-Text)
+# Linux STT (Speech-to-Text)
 
-No offline STT solution available online worked properly on my PC, so I built my own. This is a lightweight, offline, and secure Speech-to-Text solution specifically optimized for Fedora Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
+No offline STT solution available online worked properly on my PC, so I built my own. This is a lightweight, offline, and secure Speech-to-Text solution optimized for Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
 
 ## Key Features
 - **Toggle Trigger:** Press and hold **F8** to record, release to transcribe.
@@ -11,12 +11,15 @@ No offline STT solution available online worked properly on my PC, so I built my
 
 ## Prerequisites
 
-This project is optimized for **Fedora Linux**.
+This project is compatible with most **Linux distributions** (Fedora, Ubuntu, Debian, Arch, etc.) using systemd.
 
-Install the required system dependencies:
-```bash
-sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
-```
+The installer will attempt to automatically install dependencies for:
+- **Fedora** (dnf)
+- **Ubuntu/Debian** (apt)
+- **Arch** (pacman)
+
+If you are on a different distribution, ensure you have these installed:
+`alsa-utils`, `wl-clipboard`, `evtest`, `cmake`, `gcc/g++`, `make`, `libnotify`, `ydotool`, `git`, `curl`.
 
 ## Installation
 
@@ -31,11 +34,11 @@ sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
    make install
    ```
    *Note: The installer will automatically:*
-   - Check and install missing system dependencies (Fedora).
+   - Detect your distribution and install missing dependencies.
    - Clone and build `whisper.cpp`.
    - Download the base English model.
    - Configure background services (`ydotoold` and `stt-daemon`).
-   - Set up necessary permissions.
+   - Set up necessary permissions and udev rules.
 
 3. **Finalize Permissions:**
    If the installer added you to the `input` group, you **must** log out and log back in for the changes to take effect.

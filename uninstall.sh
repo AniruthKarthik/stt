@@ -27,8 +27,12 @@ if systemctl is-active --quiet ydotoold.service 2>/dev/null || systemctl is-enab
     sudo systemctl daemon-reload
 fi
 
-# 3. Cleanup temporary files and logs
-echo "Cleaning up temporary files and logs..."
+# 3. Remove udev rules
+echo "Removing udev rules..."
+sudo rm -f /etc/udev/rules.d/80-stt-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger || true
+
+# 4. Cleanup temporary files and logs
 rm -rf "$PROJECT_DIR/tmp"
 
 # 4. Kill any stray processes associated with the project

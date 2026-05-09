@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # STT Project Installer
+# A distribution-agnostic installer for the STT Project.
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,31 +11,50 @@ MODEL_DIR="$PROJECT_DIR/models"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 WHISPER_REPO="https://github.com/ggerganov/whisper.cpp"
 
-echo "--- STT Project Installer (Fresh Start) ---"
+echo "--- STT Project Installer (Linux Universal) ---"
 
 mkdir -p "$PROJECT_DIR/tmp"
 mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$PROJECT_DIR/models"
 
-# Dependencies Check & Auto-install
-commands=("arecord" "wl-copy" "evtest" "make" "g++" "cmake" "notify-send" "ydotool")
-MISSING_DEPS=()
+# --- Distribution Detection & Dependency Installation ---
+install_dependencies() {
+    if command -v dnf &> /dev/null; then
+        echo "Detected Fedora/RHEL-based system (dnf)."
+        sudo dnf install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool git curl
+    elif command -v apt-get &> /dev/null; then
+        echo "Detected Debian/Ubuntu-based system (apt)."
+        sudo apt-get update
+        sudo apt-get install -y alsa-utils wl-clipboard evtest make g++ cmake libnotify-bin ydotool git curl
+    elif command -v pacman &> /dev/null; then
+        echo "Detected Arch-based system (pacman)."
+        sudo pacman -S --needed --noconfirm alsa-utils wl-clipboard evtest make gcc cmake libnotify ydotool git curl
+    else
+        echo "Unknown distribution. Please ensure you have the following installed:"
+        echo "alsa-utils, wl-clipboard, evtest, make, g++, cmake, libnotify, ydotool, git, curl"
+        echo "Press Enter to continue if you have installed these manually, or Ctrl+C to abort."
+        read -r
+    fi
+}
+
+# Check for missing commands and trigger installation if needed
+commands=("arecord" "wl-copy" "evtest" "make" "g++" "cmake" "notify-send" "ydotool" "git" "curl")
+MISSING=false
 for cmd in "${commands[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
-        MISSING_DEPS+=("$cmd")
+        # Check for g++ specifically as it might be named gcc-c++
+        if [[ "$cmd" == "g++" ]] && command -v g++ &> /dev/null; then continue; fi
+        MISSING=true
+        break
     fi
 done
 
-if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-    echo "Missing dependencies: ${MISSING_DEPS[*]}"
-    if command -v dnf &> /dev/null; then
-        echo "Detected Fedora. Attempting to install dependencies..."
-        sudo dnf install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool
-    else
-        echo "Please install the following packages: alsa-utils, wl-clipboard, evtest, cmake, gcc-c++, make, libnotify, ydotool"
-        exit 1
-    fi
+if [ "$MISSING" = true ]; then
+    echo "Missing dependencies. Attempting to install..."
+    install_dependencies
 fi
+
+# --- Core Logic Setup ---
 
 # Clone whisper.cpp if missing
 if [ ! -d "$PROJECT_DIR/whisper.cpp" ]; then
@@ -56,23 +76,38 @@ if [ ! -f "$MODEL_DIR/ggml-base.en.bin" ]; then
     curl -L "$MODEL_URL" -o "$MODEL_DIR/ggml-base.en.bin"
 fi
 
-# Permissions Check
-if ! groups | grep -q input; then
-    echo "IMPORTANT: You need to be in the 'input' group to read the trigger key."
-    echo "Attempting to add $USER to 'input' group..."
-    sudo usermod -aG input "$USER"
-    echo "Successfully added to group. You will need to log out and back in for this to take effect."
+# --- Permissions & Groups ---
+
+# Handle the 'input' group (common for evdev access)
+INPUT_GROUP="input"
+if ! getent group "$INPUT_GROUP" > /dev/null; then
+    # Some distros might use a different group, but 'input' is the standard kernel convention
+    echo "Warning: '$INPUT_GROUP' group not found. Proceeding with caution."
 fi
 
-# Ensure uinput permissions
+if ! groups | grep -q "$INPUT_GROUP"; then
+    echo "Adding $USER to the '$INPUT_GROUP' group..."
+    sudo usermod -aG "$INPUT_GROUP" "$USER"
+    echo "Successfully added to group. NOTE: You MUST log out and back in for this to take effect."
+fi
+
+# Ensure uinput permissions (required for ydotool)
 if [ ! -w /dev/uinput ]; then
-    echo "Setting up uinput permissions..."
-    sudo sh -c 'chown root:input /dev/uinput && chmod 0660 /dev/uinput'
+    echo "Setting up uinput device permissions..."
+    # Create a udev rule for persistence across reboots
+    sudo bash -c "cat > /etc/udev/rules.d/80-stt-uinput.rules <<EOF
+KERNEL==\"uinput\", GROUP=\"$INPUT_GROUP\", MODE=\"0660\"
+EOF"
+    sudo udevadm control --reload-rules && sudo udevadm trigger
+    # Immediate fix for current session
+    sudo chmod 0660 /dev/uinput
+    sudo chown root:"$INPUT_GROUP" /dev/uinput
 fi
 
-# Configure ydotoold system service (as root for uinput access)
+# --- Service Configuration ---
+
+# Configure ydotoold system service
 echo "Configuring ydotoold system service..."
-# Find ydotoold path
 YDOTOOLD_PATH=$(command -v ydotoold)
 if [ -z "$YDOTOOLD_PATH" ]; then
     echo "Error: ydotoold not found. Please ensure ydotool is installed."
@@ -123,4 +158,4 @@ echo "The STT Daemon is running in the background."
 echo "Press and HOLD F8 to speak, release to transcribe."
 echo "Check logs at: $PROJECT_DIR/tmp/stt.log"
 echo "--------------------------------------------------"
-echo "NOTE: If this is your first time, please log out and back in to apply group changes."
+echo "IMPORTANT: If you were just added to the 'input' group, please log out and log back in."
