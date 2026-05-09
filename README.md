@@ -1,6 +1,6 @@
 # Fedora STT (Speech-to-Text)
 
-A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
+No offline STT solution available online worked properly on my PC, so I built my own. This is a lightweight, offline, and secure Speech-to-Text solution specifically optimized for Fedora Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
 
 ## Key Features
 - **Toggle Trigger:** Press and hold **F8** to record, release to transcribe.
@@ -22,7 +22,7 @@ sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url> ~/stt
+   git clone https://github.com/AniruthKarthik/stt ~/stt
    cd ~/stt
    ```
 
