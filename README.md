@@ -1,58 +1,71 @@
-# Fedora Copilot STT
+# Fedora STT (Speech-to-Text)
 
-A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. Triggered by the **Copilot key**, it transcribes your speech locally and injects the text into your active application.
+A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
 
 ## Key Features
-- Toggle Trigger: Press the key once to start recording, then press it again to stop and transcribe.
-- 100% Offline: Uses whisper.cpp for local inference.
-- Fast Injection: Uses ydotool for virtual keyboard input.
-- Visual Feedback: Real-time status text typed into your active application.
-- Lightweight: No heavy background daemons or RAM usage when idle.
+- **Toggle Trigger:** Press and hold **F12** to record, release to transcribe.
+- **100% Offline:** Uses `whisper.cpp` for local inference (no data leaves your machine).
+- **Inline Feedback:** Displays `recording...` at your cursor while recording.
+- **Fast Injection:** Uses `ydotool` for virtual keyboard input.
+- **Lightweight:** Minimal background overhead using a low-level event daemon.
 
 ## Prerequisites
 
-This project is specifically designed and tested on Fedora Linux. While it may work on other distributions, the dependency names and system configurations are tailored for Fedora.
+This project is optimized for **Fedora Linux**.
 
-You will need the following dependencies:
-
+Install the required system dependencies:
 ```bash
-sudo dnf install -y alsa-utils ydotool xbindkeys zsh cmake gcc-c++ make libnotify libinput-utils xinput
+sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
 ```
 
 ## Installation
 
-1. Clone the repository:
+1. **Clone the repository:**
    ```bash
    git clone <your-repo-url> ~/stt
    cd ~/stt
    ```
 
-2. Run the installer:
+2. **Run the installer:**
    ```bash
    make install
    ```
+   *Note: The installer will build `whisper.cpp`, download the base English model, and configure the background services.*
 
-3. Set Permissions:
-   To allow ydotool to type without root, your user must be in the input group and have access to /dev/uinput:
+3. **Set Permissions:**
+   To allow the background daemon and typing tool to work without root:
    ```bash
    sudo usermod -aG input $USER
    sudo sh -c 'chown root:input /dev/uinput && chmod 0660 /dev/uinput'
    ```
-   Note: You must log out and log back in for the group changes to take effect.
+   **Important:** You must log out and log back in for the group changes to take effect.
 
 ## Usage
 
-- Press the **Copilot key (keycode 201)** to **start recording**.
-- Speak clearly into your microphone. There is no time limit.
-- Press the key again to **stop recording** and start transcription.
-- The transcribed text will be automatically typed into your focused window.
+1. **Start the Service:**
+   The installation script automatically enables the user service. If it's not running:
+   ```bash
+   systemctl --user enable --now stt-daemon.service
+   ```
+
+2. **Record & Transcribe:**
+   - Open any text application (Terminal, Browser, Editor).
+   - Press and **hold F12**.
+   - You will see `recording...` appear at your cursor.
+   - Speak clearly.
+   - **Release F12**. The status text will be replaced by your transcription.
+
+## Architecture & Configuration
+
+- **Daemon:** `bin/stt-daemon` listens to `/dev/input/event*` for F12 events.
+- **Logic:** `bin/whisperstt` handles the recording (`arecord`), transcription (`whisper.cpp`), and typing (`ydotool`).
+- **Trigger Key:** F12 was chosen as the default to avoid conflicts with modern "Copilot" keys, which often send complex macros (Meta+Shift+F23) that can interfere with synthetic typing.
 
 ## Troubleshooting
 
-**TODO: Fix Copilot keymapping. Keycode 201 may be incorrect for all hardware.**
-
-Check the logs for detailed error messages:
-```bash
-tail -f ~/stt/tmp/stt.log
-```
-Ensure your default microphone is correctly set in your system sound settings.
+- **No Typing:** Ensure `ydotoold` is running (`systemctl status ydotoold.service`).
+- **Permission Denied:** Verify your user is in the `input` group (`groups`).
+- **Logs:** Check detailed output here:
+  ```bash
+  tail -f ~/stt/tmp/stt.log
+  ```
