@@ -1,4 +1,4 @@
-# Linux STT (Speech-to-Text)
+# Cursor aware STT (Speech-to-Text)
 
 No offline STT solution available online worked properly on my PC, so I built my own. This is a lightweight, offline, and secure Speech-to-Text solution optimized for Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
 
