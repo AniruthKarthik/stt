@@ -1,4 +1,4 @@
-#!/zsh
+#!/usr/bin/zsh
 
 # --- Configuration ---
 PROJECT_DIR="/home/ani/stt"
