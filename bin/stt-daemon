@@ -1,12 +1,16 @@
 #!/bin/bash
 # STT Trigger Daemon
-# Listens to all physical input devices for KEY_F23 (Copilot Key)
+# Listens to all physical input devices for KEY_F8
+
+# Find the directory where this script is located
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WHISPERSTT_PATH="$BIN_DIR/whisperstt"
 
 # Kill any existing instances to avoid duplicates
 pkill -f "evtest" 2>/dev/null
 pkill -f "whisperstt" 2>/dev/null
 
-echo "Starting STT Trigger Daemon (Listening for Copilot Key - F23)..."
+echo "Starting STT Trigger Daemon (Listening for F8 Key)..."
 
 # Find and listen to physical input devices only
 # We exclude "ydotoold" and other virtual devices to avoid loops
@@ -18,14 +22,14 @@ for dev in /dev/input/event*; do
         fi
         
         (
-            stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" '
+            stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" -v wp="$WHISPERSTT_PATH" '
             /KEY_F8\), value 1/ { 
                 print "[Trigger ON: " n " (" d ")]"
-                system("/home/ani/stt/bin/whisperstt start") 
+                system(wp " start") 
             }
             /KEY_F8\), value 0/ { 
                 print "[Trigger OFF: " n " (" d ")]"
-                system("/home/ani/stt/bin/whisperstt stop") 
+                system(wp " stop") 
             }
             '
         ) &

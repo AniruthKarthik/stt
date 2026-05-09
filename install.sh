@@ -8,6 +8,7 @@ BIN_PATH="$PROJECT_DIR/bin/whisperstt"
 DAEMON_PATH="$PROJECT_DIR/bin/stt-daemon"
 MODEL_DIR="$PROJECT_DIR/models"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+WHISPER_REPO="https://github.com/ggerganov/whisper.cpp"
 
 echo "--- STT Project Installer (Fresh Start) ---"
 
@@ -15,20 +16,30 @@ mkdir -p "$PROJECT_DIR/tmp"
 mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$PROJECT_DIR/models"
 
-# Dependencies Check
-commands=("arecord" "wl-copy" "evtest" "make" "g++" "cmake" "notify-send")
+# Dependencies Check & Auto-install
+commands=("arecord" "wl-copy" "evtest" "make" "g++" "cmake" "notify-send" "ydotool")
+MISSING_DEPS=()
 for cmd in "${commands[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
-        echo "Warning: $cmd is not installed."
-        [[ "$cmd" == "notify-send" ]] || exit 1
+        MISSING_DEPS+=("$cmd")
     fi
 done
 
-if ! command -v wtype &> /dev/null; then
-    echo "=========================================================="
-    echo "wtype is NOT installed. Auto-pasting will fallback to clipboard only."
-    echo "To enable direct typing, install wtype: sudo dnf install wtype"
-    echo "=========================================================="
+if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+    echo "Missing dependencies: ${MISSING_DEPS[*]}"
+    if command -v dnf &> /dev/null; then
+        echo "Detected Fedora. Attempting to install dependencies..."
+        sudo dnf install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool
+    else
+        echo "Please install the following packages: alsa-utils, wl-clipboard, evtest, cmake, gcc-c++, make, libnotify, ydotool"
+        exit 1
+    fi
+fi
+
+# Clone whisper.cpp if missing
+if [ ! -d "$PROJECT_DIR/whisper.cpp" ]; then
+    echo "Cloning whisper.cpp..."
+    git clone "$WHISPER_REPO" "$PROJECT_DIR/whisper.cpp"
 fi
 
 # Build whisper.cpp
@@ -46,18 +57,28 @@ if [ ! -f "$MODEL_DIR/ggml-base.en.bin" ]; then
 fi
 
 # Permissions Check
+if ! groups | grep -q input; then
+    echo "IMPORTANT: You need to be in the 'input' group to read the trigger key."
+    echo "Attempting to add $USER to 'input' group..."
+    sudo usermod -aG input "$USER"
+    echo "Successfully added to group. You will need to log out and back in for this to take effect."
+fi
+
+# Ensure uinput permissions
 if [ ! -w /dev/uinput ]; then
-    # We do not strictly need uinput if we use wtype instead of ydotool, 
-    # but we DO need input group access for evtest.
-    if ! groups | grep -q input; then
-        echo "IMPORTANT: You need to be in the 'input' group to read the Copilot key."
-        echo "Run: sudo usermod -aG input \$USER"
-        echo "Then log out and log back in."
-    fi
+    echo "Setting up uinput permissions..."
+    sudo sh -c 'chown root:input /dev/uinput && chmod 0660 /dev/uinput'
 fi
 
 # Configure ydotoold system service (as root for uinput access)
 echo "Configuring ydotoold system service..."
+# Find ydotoold path
+YDOTOOLD_PATH=$(command -v ydotoold)
+if [ -z "$YDOTOOLD_PATH" ]; then
+    echo "Error: ydotoold not found. Please ensure ydotool is installed."
+    exit 1
+fi
+
 sudo bash -c "cat > /etc/systemd/system/ydotoold.service <<EOF
 [Unit]
 Description=ydotoold - backend for ydotool
@@ -65,7 +86,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ydotoold --socket-path /tmp/.ydotool_socket --socket-own 1000:1000
+ExecStart=$YDOTOOLD_PATH --socket-path /tmp/.ydotool_socket --socket-own $(id -u):$(id -g)
 ExecStartPost=/usr/bin/chmod 666 /tmp/.ydotool_socket
 Restart=always
 
@@ -80,7 +101,7 @@ sudo systemctl enable --now ydotoold.service
 mkdir -p ~/.config/systemd/user/
 cat > ~/.config/systemd/user/stt-daemon.service <<EOF
 [Unit]
-Description=STT Trigger Daemon (Copilot Key)
+Description=STT Trigger Daemon (F8 Key)
 After=graphical-session.target
 
 [Service]
@@ -99,6 +120,7 @@ systemctl --user enable --now stt-daemon.service
 echo "--------------------------------------------------"
 echo "Installation complete!"
 echo "The STT Daemon is running in the background."
-echo "Press and HOLD the Copilot key to speak, release to transcribe."
+echo "Press and HOLD F8 to speak, release to transcribe."
 echo "Check logs at: $PROJECT_DIR/tmp/stt.log"
 echo "--------------------------------------------------"
+echo "NOTE: If this is your first time, please log out and back in to apply group changes."

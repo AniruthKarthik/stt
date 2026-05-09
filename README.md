@@ -30,15 +30,15 @@ sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
    ```bash
    make install
    ```
-   *Note: The installer will build `whisper.cpp`, download the base English model, and configure the background services.*
+   *Note: The installer will automatically:*
+   - Check and install missing system dependencies (Fedora).
+   - Clone and build `whisper.cpp`.
+   - Download the base English model.
+   - Configure background services (`ydotoold` and `stt-daemon`).
+   - Set up necessary permissions.
 
-3. **Set Permissions:**
-   To allow the background daemon and typing tool to work without root:
-   ```bash
-   sudo usermod -aG input $USER
-   sudo sh -c 'chown root:input /dev/uinput && chmod 0660 /dev/uinput'
-   ```
-   **Important:** You must log out and log back in for the group changes to take effect.
+3. **Finalize Permissions:**
+   If the installer added you to the `input` group, you **must** log out and log back in for the changes to take effect.
 
 ## Usage
 

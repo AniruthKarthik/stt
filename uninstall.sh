@@ -1,39 +1,54 @@
 #!/bin/bash
 
 # STT Project Uninstaller
+# This script removes services and configuration files created by install.sh
+
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-XBINDKEYS_CONF="$HOME/.xbindkeysrc"
 
 echo "--- STT Project Uninstaller ---"
 
-# 1. Stop and disable ydotoold user service
-echo "Disabling ydotoold user service..."
-systemctl --user stop ydotoold.service || true
-systemctl --user disable ydotoold.service || true
-rm -f ~/.config/systemd/user/ydotoold.service
-systemctl --user daemon-reload
-
-# 2. Remove xbindkeys binding
-if [ -f "$XBINDKEYS_CONF" ]; then
-    echo "Removing binding from $XBINDKEYS_CONF..."
-    # Remove the block matching whisperstt
-    # This is a bit tricky with sed, we'll use a temporary file
-    grep -v "whisperstt" "$XBINDKEYS_CONF" | grep -v "c:201" > "${XBINDKEYS_CONF}.tmp" || true
-    mv "${XBINDKEYS_CONF}.tmp" "$XBINDKEYS_CONF"
+# 1. Stop and disable stt-daemon user service
+if systemctl --user is-active --quiet stt-daemon.service 2>/dev/null || systemctl --user is-enabled --quiet stt-daemon.service 2>/dev/null; then
+    echo "Stopping and disabling stt-daemon user service..."
+    systemctl --user stop stt-daemon.service || true
+    systemctl --user disable stt-daemon.service || true
+    rm -f ~/.config/systemd/user/stt-daemon.service
+    systemctl --user daemon-reload
 fi
 
-# 3. Stop xbindkeys
-pkill xbindkeys || true
-# Restart it if it was previously used for other things (optional, but safer to just leave it killed if we don't know)
-# xbindkeys
+# 2. Stop and disable ydotoold system service
+if systemctl is-active --quiet ydotoold.service 2>/dev/null || systemctl is-enabled --quiet ydotoold.service 2>/dev/null; then
+    echo "Stopping and disabling ydotoold system service..."
+    sudo systemctl stop ydotoold.service || true
+    sudo systemctl disable ydotoold.service || true
+    sudo rm -f /etc/systemd/system/ydotoold.service
+    sudo systemctl daemon-reload
+fi
 
-# 4. Cleanup tmp files
+# 3. Cleanup temporary files and logs
+echo "Cleaning up temporary files and logs..."
 rm -rf "$PROJECT_DIR/tmp"
+
+# 4. Kill any stray processes associated with the project
+echo "Killing any remaining STT processes..."
+pkill -f "stt-daemon" || true
+pkill -f "whisperstt" || true
+# Note: we don't pkill evtest globally as it might be used elsewhere, 
+# but stopping the service should have handled its children.
+
+# 5. Optional: Clean up cloned whisper.cpp and models
+# We keep these by default to avoid accidental deletion of large downloads,
+# but we inform the user how to remove them.
 
 echo "--------------------------------------------------"
 echo "Uninstallation complete!"
-echo "Note: whisper.cpp and the model file were not removed."
-echo "You can manually delete $PROJECT_DIR if you want to remove everything."
+echo ""
+echo "Note:"
+echo "- The 'input' group membership was NOT removed for your user."
+echo "- whisper.cpp source and model files were NOT removed."
+echo ""
+echo "To completely remove the project, you can now delete the directory:"
+echo "  rm -rf $PROJECT_DIR"
 echo "--------------------------------------------------"

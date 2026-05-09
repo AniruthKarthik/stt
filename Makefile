@@ -1,14 +1,16 @@
 PROJECT_DIR := $(shell pwd)
 MODEL_URL := https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 MODEL_PATH := models/ggml-base.en.bin
+WHISPER_REPO := https://github.com/ggerganov/whisper.cpp
 
-.PHONY: all install build-whisper download-model uninstall clean help
+.PHONY: all install build-whisper download-model fetch-whisper uninstall clean help
 
 all: install
 
 help:
 	@echo "Usage: make [target]"
-	@echo "  install           Full installation (build, download, service)"
+	@echo "  install           Full installation (fetch, build, download, service)"
+	@echo "  fetch-whisper     Clone whisper.cpp repository if missing"
 	@echo "  build-whisper     Build whisper.cpp only"
 	@echo "  download-model    Download the GGML model only"
 	@echo "  uninstall         Remove services and configurations"
@@ -17,7 +19,15 @@ help:
 install:
 	./install.sh
 
-build-whisper:
+fetch-whisper:
+	@if [ ! -d "whisper.cpp" ]; then \
+		echo "Cloning whisper.cpp..."; \
+		git clone $(WHISPER_REPO); \
+	else \
+		echo "whisper.cpp already exists."; \
+	fi
+
+build-whisper: fetch-whisper
 	@echo "Building whisper.cpp..."
 	cd whisper.cpp && mkdir -p build && cd build && cmake .. && make -j$(shell nproc) whisper-cli
 
@@ -29,12 +39,7 @@ download-model:
 	fi
 
 uninstall:
-	@echo "Uninstalling..."
-	systemctl --user stop stt-daemon.service || true
-	systemctl --user disable stt-daemon.service || true
-	rm -f ~/.config/systemd/user/stt-daemon.service
-	systemctl --user daemon-reload
-	pkill -f stt-daemon || true
+	./uninstall.sh
 
 clean:
 	rm -rf tmp/*

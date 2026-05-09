@@ -1,11 +1,15 @@
 #!/bin/bash
 
-PROJECT_DIR="/home/ani/stt"
+# Find the project root directory (one level up from bin)
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
 TMP_DIR="$PROJECT_DIR/tmp"
 PID_FILE="$TMP_DIR/record.pid"
 AUDIO_FILE="$TMP_DIR/audio.wav"
 LOG_FILE="$TMP_DIR/stt.log"
 YDOTOOL_SOCKET="/tmp/.ydotool_socket"
+WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
+MODEL_PATH="$PROJECT_DIR/models/ggml-base.en.bin"
 
 mkdir -p "$TMP_DIR"
 
@@ -78,8 +82,8 @@ case "$1" in
             press_key 14
         done
         
-        TEXT=$("$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli" \
-            -m "$PROJECT_DIR/models/ggml-base.en.bin" \
+        TEXT=$("$WHISPER_CLI" \
+            -m "$MODEL_PATH" \
             -f "$AUDIO_FILE" \
             -nt 2>>"$LOG_FILE" \
             | tail -n 1 \
