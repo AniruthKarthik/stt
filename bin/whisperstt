@@ -6,115 +6,76 @@ MODEL_PATH="$PROJECT_DIR/models/ggml-base.en.bin"
 WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
 TMP_DIR="$PROJECT_DIR/tmp"
 LOG_FILE="$TMP_DIR/stt.log"
-KEY_CODE=201 # Copilot key
+PID_FILE="$TMP_DIR/stt.pid"
+AUDIO_FILE="$TMP_DIR/stt_recording.wav"
 
-# Ensure directories exist
 mkdir -p "$TMP_DIR"
 
-# --- Functions ---
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
 notify() {
     if command -v notify-send &> /dev/null; then
-        notify-send -t 1500 "STT" "$1"
+        notify-send -t 1000 "STT" "$1" &
     fi
 }
 
-cleanup() {
-    log "Cleaning up..."
-    # Kill arecord if it's still running
-    if [[ -n "$ARECORD_PID" ]]; then
-        kill "$ARECORD_PID" 2>/dev/null
+start_recording() {
+    if [[ -f "$PID_FILE" ]]; then
+        local OLD_PID=$(cat "$PID_FILE")
+        if kill -0 "$OLD_PID" 2>/dev/null; then
+            exit 0
+        fi
     fi
-    [[ -f "$AUDIO_FILE" ]] && rm -f "$AUDIO_FILE"
+    log "--- Triggered ---"
+    notify "Listening..."
+    rm -f "$AUDIO_FILE"
+    arecord -f cd -q "$AUDIO_FILE" &
+    echo $! > "$PID_FILE"
 }
-trap cleanup EXIT INT TERM
+
+stop_recording() {
+    if [[ ! -f "$PID_FILE" ]]; then return; fi
+    local PID=$(cat "$PID_FILE")
+    rm -f "$PID_FILE"
+    if kill -0 "$PID" 2>/dev/null; then
+        sleep 0.2
+        kill "$PID"
+        wait "$PID" 2>/dev/null
+    fi
+    log "Recording stopped."
+    if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
+        log "Error: No audio captured."
+        return
+    fi
+    log "Transcribing..."
+    local TEXT=$(
+    "$WHISPER_CLI" \
+        -m "$MODEL_PATH" \
+        -f "$AUDIO_FILE" \
+        -nt \
+        2>>"$LOG_FILE" \
+        | tail -n 1 \
+        | sed 's/^ *//;s/ *$//'
+    )
+    log "Result: '$TEXT'"
+    if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" ]]; then
+        log "Hallucination ignored."
+        return
+    fi
+    log "Injecting..."
+    export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
+    ydotool type "$TEXT " 2>>"$LOG_FILE"
+    log "Done."
+}
 
 # --- Main ---
-AUDIO_FILE="$TMP_DIR/voice_$$.wav"
+start_recording
 
-# 1. Dependency Check
-if ! command -v arecord &> /dev/null; then
-    log "Error: arecord not found"
-    notify "Error: arecord not found"
-    exit 1
-fi
+# Wait for release (max 15 seconds)
+log "Waiting for release..."
+timeout 15 libinput debug-events | grep --line-buffered "released" | read -r RELEASE_EVENT
+log "Release event: $RELEASE_EVENT"
 
-if [[ ! -f "$WHISPER_CLI" ]]; then
-    log "Error: whisper-cli not found at $WHISPER_CLI"
-    notify "Error: whisper-cli not found"
-    exit 1
-fi
-
-# 2. Recording (Start)
-log "Starting recording (hold key)..."
-notify "Listening..."
-
-# Start recording in background
-arecord -f cd -q "$AUDIO_FILE" &
-ARECORD_PID=$!
-
-# 3. Wait for key release
-# We poll xinput for the key state. 
-# Key 201 is XF86TouchpadOff
-log "Waiting for key $KEY_CODE release..."
-
-# Find the keyboard ID dynamically if possible, but 9 was seen in previous turn.
-# Let's try to be a bit more robust.
-KBD_ID=$(xinput list | grep -i "keyboard" | grep -v "XTEST" | head -n 1 | grep -o "id=[0-9]*" | cut -d= -f2)
-[[ -z "$KBD_ID" ]] && KBD_ID=9
-
-while true; do
-    STATE=$(xinput query-state "$KBD_ID" 2>/dev/null | grep "key\[$KEY_CODE\]")
-    if [[ "$STATE" == *"up"* ]]; then
-        log "Key $KEY_CODE released."
-        break
-    fi
-    sleep 0.1
-done
-
-# Stop recording
-kill "$ARECORD_PID" 2>/dev/null
-wait "$ARECORD_PID" 2>/dev/null
-log "Recording stopped."
-
-if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
-    log "Error: Audio file not created or empty"
-    notify "Error: Recording failed"
-    exit 1
-fi
-
-# 4. Transcription
-log "Transcribing..."
-notify "Transcribing..."
-
-TEXT=$(
-"$WHISPER_CLI" \
-    -m "$MODEL_PATH" \
-    -f "$AUDIO_FILE" \
-    -nt \
-    2>>"$LOG_FILE" \
-    | tail -n 1 \
-    | sed 's/^ *//;s/ *$//'
-)
-
-if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" ]]; then
-    log "No valid text transcribed: $TEXT"
-    notify "No speech detected"
-    exit 0
-fi
-
-# 5. Injection
-log "Injecting: $TEXT"
-export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
-
-if ! ydotool type "$TEXT " 2>>"$LOG_FILE"; then
-    log "Error: ydotool failed. Socket: $YDOTOOL_SOCKET"
-    notify "Error: Injection failed"
-    exit 1
-fi
-
-notify "Transcribed: $TEXT"
-exit 0
+stop_recording
