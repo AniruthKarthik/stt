@@ -1,0 +1,96 @@
+#!/bin/zsh
+
+# --- Configuration ---
+PROJECT_DIR="/home/ani/stt"
+MODEL_PATH="$PROJECT_DIR/models/ggml-base.en.bin"
+WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
+TMP_DIR="$PROJECT_DIR/tmp"
+LOG_FILE="$TMP_DIR/stt.log"
+RECORD_DURATION=5 # Seconds
+
+# Ensure directories exist
+mkdir -p "$TMP_DIR"
+
+# --- Functions ---
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+notify() {
+    if command -v notify-send &> /dev/null; then
+        notify-send -t 2000 "STT" "$1"
+    fi
+}
+
+cleanup() {
+    [[ -f "$AUDIO_FILE" ]] && rm -f "$AUDIO_FILE"
+}
+trap cleanup EXIT
+
+# --- Main ---
+AUDIO_FILE="$TMP_DIR/voice_$$.wav"
+
+# 1. Dependency Check
+if ! command -v arecord &> /dev/null; then
+    log "Error: arecord not found"
+    notify "Error: arecord not found"
+    exit 1
+fi
+
+if [[ ! -f "$WHISPER_CLI" ]]; then
+    log "Error: whisper-cli not found at $WHISPER_CLI"
+    notify "Error: whisper-cli not found"
+    exit 1
+fi
+
+if ! command -v ydotool &> /dev/null; then
+    log "Error: ydotool not found"
+    notify "Error: ydotool not found"
+    exit 1
+fi
+
+# 2. Recording
+log "Starting recording ($RECORD_DURATION sec)..."
+notify "Listening..."
+arecord -f cd -d "$RECORD_DURATION" -q "$AUDIO_FILE"
+
+if [[ ! -f "$AUDIO_FILE" ]]; then
+    log "Error: Audio file not created"
+    notify "Error: Recording failed"
+    exit 1
+fi
+
+# 3. Transcription
+log "Transcribing..."
+notify "Transcribing..."
+
+# Run whisper and capture the last line which contains the text
+TEXT=$(
+"$WHISPER_CLI" \
+    -m "$MODEL_PATH" \
+    -f "$AUDIO_FILE" \
+    -nt \
+    2>>"$LOG_FILE" \
+    | tail -n 1 \
+    | sed 's/^ *//;s/ *$//'
+)
+
+# Filter out common "hallucinations" or empty results
+if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" ]]; then
+    log "No valid text transcribed: $TEXT"
+    notify "No speech detected"
+    exit 0
+fi
+
+# 4. Injection
+log "Injecting: $TEXT"
+export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
+
+if ! ydotool type "$TEXT " 2>>"$LOG_FILE"; then
+    log "Error: ydotool failed. Socket: $YDOTOOL_SOCKET"
+    notify "Error: Injection failed"
+    exit 1
+fi
+
+notify "Transcribed: $TEXT"
+exit 0
