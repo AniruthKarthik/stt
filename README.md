@@ -3,7 +3,7 @@
 A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. This tool allows you to transcribe speech locally and inject it directly into any active application.
 
 ## Key Features
-- **Toggle Trigger:** Press and hold **F12** to record, release to transcribe.
+- **Toggle Trigger:** Press and hold **F8** to record, release to transcribe.
 - **100% Offline:** Uses `whisper.cpp` for local inference (no data leaves your machine).
 - **Inline Feedback:** Displays `recording...` at your cursor while recording.
 - **Fast Injection:** Uses `ydotool` for virtual keyboard input.
@@ -50,16 +50,16 @@ sudo dnf install -y alsa-utils ydotool evtest cmake gcc-c++ make libnotify
 
 2. **Record & Transcribe:**
    - Open any text application (Terminal, Browser, Editor).
-   - Press and **hold F12**.
+   - Press and **hold F8**.
    - You will see `recording...` appear at your cursor.
    - Speak clearly.
-   - **Release F12**. The status text will be replaced by your transcription.
+   - **Release F8**. The status text will be replaced by your transcription.
 
 ## Architecture & Configuration
 
-- **Daemon:** `bin/stt-daemon` listens to `/dev/input/event*` for F12 events.
+- **Daemon:** `bin/stt-daemon` listens to `/dev/input/event*` for F8 events.
 - **Logic:** `bin/whisperstt` handles the recording (`arecord`), transcription (`whisper.cpp`), and typing (`ydotool`).
-- **Trigger Key:** F12 was chosen as the default to avoid conflicts with modern "Copilot" keys, which often send complex macros (Meta+Shift+F23) that can interfere with synthetic typing.
+- **Trigger Key:** F8 was chosen as the default to avoid conflicts with modern "Copilot" keys, which often send complex macros (Meta+Shift+F23) that can interfere with synthetic typing.
 
 ## Troubleshooting
 

@@ -19,11 +19,11 @@ for dev in /dev/input/event*; do
         
         (
             stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" '
-            /KEY_F12\), value 1/ { 
+            /KEY_F8\), value 1/ { 
                 print "[Trigger ON: " n " (" d ")]"
                 system("/home/ani/stt/bin/whisperstt start") 
             }
-            /KEY_F12\), value 0/ { 
+            /KEY_F8\), value 0/ { 
                 print "[Trigger OFF: " n " (" d ")]"
                 system("/home/ani/stt/bin/whisperstt stop") 
             }

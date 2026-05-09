@@ -5,8 +5,8 @@ This project implements a hardware-triggered Speech-to-Text (STT) system for Fed
 
 ## Critical Architectural Decisions
 
-### 1. Trigger Key: F12
-- **Decision:** Use **F12** as the default trigger instead of the "Copilot" key.
+### 1. Trigger Key: F8
+- **Decision:** Use **F8** as the default trigger instead of the "Copilot" key.
 - **Rationale:** Modern Copilot keys are implemented as hardware/firmware macros sending `Left Meta + Left Shift + F23`. Attempting to use `ydotool` to inject text while these physical modifiers are held leads to:
     - Garbage output (CSI u sequences) in terminals.
     - Accidental triggering of system shortcuts (e.g., Spectacle screenshots).
