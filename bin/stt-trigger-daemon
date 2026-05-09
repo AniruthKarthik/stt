@@ -1,0 +1,32 @@
+#!/usr/bin/zsh
+
+# This daemon polls xinput for key 201 (Copilot) transitions.
+# It acts as a fail-safe for xbindkeys on Wayland.
+
+KEY_CODE=201
+# Find KBD ID
+KBD_ID=$(xinput list | grep -i "keyboard" | grep -v "XTEST" | head -n 1 | grep -o "id=[0-9]*" | cut -d= -f2)
+[[ -z "$KBD_ID" ]] && KBD_ID=9
+
+LAST_STATE="up"
+
+LOG_FILE="/home/ani/stt/tmp/stt.log"
+
+echo "Starting STT Trigger Daemon (Polling ID $KBD_ID for key $KEY_CODE)..."
+
+while true; do
+    # Check if key is down
+    if xinput query-state "$KBD_ID" 2>/dev/null | grep -q "key\[$KEY_CODE\]=down"; then
+        CURRENT_STATE="down"
+    else
+        CURRENT_STATE="up"
+    fi
+    
+    # If state changed to down, trigger the script
+    if [[ "$CURRENT_STATE" == "down" && "$LAST_STATE" == "up" ]]; then
+        /home/ani/stt/bin/whisperstt &
+    fi
+    
+    LAST_STATE="$CURRENT_STATE"
+    sleep 0.1
+done

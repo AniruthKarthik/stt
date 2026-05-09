@@ -1,12 +1,12 @@
 # Fedora Copilot STT
 
-A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. Triggered by the Copilot key, it transcribes your speech locally and injects the text into your active application.
+A lightweight, offline, and secure Speech-to-Text (STT) solution for Fedora Linux. Triggered by the **Copilot key**, it transcribes your speech locally and injects the text into your active application.
 
 ## Key Features
 - Toggle Trigger: Press the key once to start recording, then press it again to stop and transcribe.
 - 100% Offline: Uses whisper.cpp for local inference.
 - Fast Injection: Uses ydotool for virtual keyboard input.
-- Visual Feedback: Real-time notifications via notify-send.
+- Visual Feedback: Real-time status text typed into your active application.
 - Lightweight: No heavy background daemons or RAM usage when idle.
 
 ## Prerequisites
@@ -42,12 +42,14 @@ sudo dnf install -y alsa-utils ydotool xbindkeys zsh cmake gcc-c++ make libnotif
 
 ## Usage
 
-- Press the Copilot key (keycode 201) to **start recording**.
+- Press the **Copilot key (keycode 201)** to **start recording**.
 - Speak clearly into your microphone. There is no time limit.
 - Press the key again to **stop recording** and start transcription.
 - The transcribed text will be automatically typed into your focused window.
 
 ## Troubleshooting
+
+**TODO: Fix Copilot keymapping. Keycode 201 may be incorrect for all hardware.**
 
 Check the logs for detailed error messages:
 ```bash

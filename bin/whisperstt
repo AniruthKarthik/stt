@@ -9,58 +9,88 @@ LOG_FILE="$TMP_DIR/stt.log"
 PID_FILE="$TMP_DIR/stt.pid"
 AUDIO_FILE="$TMP_DIR/stt_recording.wav"
 
+# Status text
+STATUS_TEXT="recording..."
+STATUS_LEN=${#STATUS_TEXT}
+
+# Ydotool socket
+export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
+
 mkdir -p "$TMP_DIR"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
-notify() {
-    if command -v notify-send &> /dev/null; then
-        notify-send -t 1000 "STT" "$1" &
-    fi
+wait_for_release() {
+    local KBD_ID=$(xinput list | grep -i "keyboard" | grep -v "XTEST" | head -n 1 | grep -o "id=[0-9]*" | cut -d= -f2)
+    [[ -z "$KBD_ID" ]] && return
+    # Wait for Copilot key (201) to be released
+    while xinput query-state "$KBD_ID" 2>/dev/null | grep -qE "key\[201\]=down"; do
+        sleep 0.05
+    done
 }
 
+# Cleanup on errors
+trap 'rm -f "$PID_FILE" 2>/dev/null' ERR
+
 start_recording() {
-    log "--- Toggle Start ---"
-    notify "Recording started..."
+    log "--- START CYCLE ---"
+    
+    # Wait for keys to be released
+    wait_for_release
+    
+    # Check if ydotool is responsive
+    if ! ydotool type "" 2>/dev/null; then
+        log "Error: ydotool unresponsive."
+        return
+    fi
+
+    # Type status
+    ydotool type "$STATUS_TEXT"
+    
     rm -f "$AUDIO_FILE"
     
-    # Start arecord in background
-    arecord -f cd -q "$AUDIO_FILE" &
+    # Start arecord
+    # Use -t wav and -r 16000 for whisper compatibility
+    arecord -f cd -r 16000 -c 1 -q "$AUDIO_FILE" &
     local REC_PID=$!
     echo "$REC_PID" > "$PID_FILE"
-    log "Recording process started: $REC_PID"
+    log "Recording started (PID $REC_PID)"
 }
 
 stop_recording() {
-    log "--- Toggle Stop ---"
-    if [[ ! -f "$PID_FILE" ]]; then
-        log "Stop requested but no active recording found."
-        return
-    fi
+    log "--- STOP CYCLE ---"
+    
+    # Wait for keys to be released
+    wait_for_release
     
     local PID=$(cat "$PID_FILE")
     rm -f "$PID_FILE"
     
     if kill -0 "$PID" 2>/dev/null; then
-        # Small delay to ensure the last bit of audio is captured
-        sleep 0.3
+        # Capture the last bits of speech
+        sleep 0.4
         kill "$PID"
         wait "$PID" 2>/dev/null
-        log "Recording process stopped."
+        log "Recording stopped."
     else
-        log "Warning: Recording process $PID not found."
+        log "Recording process $PID not found."
     fi
     
+    # Erase status
+    log "Erasing status text..."
+    # 14 is Backspace
+    for ((i=1; i<=$STATUS_LEN; i++)); do
+        ydotool key 14:1 14:0
+    done
+    
     if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
-        log "Error: Audio file is missing or empty."
-        notify "Error: No audio captured"
+        log "Error: Audio file empty."
         return
     fi
 
     log "Transcribing..."
-    notify "Transcribing..."
     
     local TEXT=$(
     "$WHISPER_CLI" \
@@ -72,41 +102,32 @@ stop_recording() {
         | sed 's/^ *//;s/ *$//'
     )
     
-    log "Transcription Result: '$TEXT'"
+    log "Raw Transcription: '$TEXT'"
 
     # Hallucination filter
     if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" || "$TEXT" == "[BLANK]" || "$TEXT" == "[wind]" || "$TEXT" == "[silence]" ]]; then
-        log "Discarding result (empty or hallucination: '$TEXT')."
-        notify "No speech detected"
+        log "Discarding hallucination."
         return
     fi
 
-    log "Injecting text into focused window..."
-    notify "Typed: $TEXT"
-    
-    export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
-    if ydotool type "$TEXT " 2>>"$LOG_FILE"; then
-        log "Injection successful."
-    else
-        log "Injection failed."
-        notify "Error: Injection failed"
-    fi
+    log "Injecting text..."
+    ydotool type "$TEXT " 2>>"$LOG_FILE"
+    log "Cycle complete."
 }
 
-# --- Main Logic ---
+# Toggle
 if [[ -f "$PID_FILE" ]]; then
     RUNNING_PID=$(cat "$PID_FILE")
     if kill -0 "$RUNNING_PID" 2>/dev/null; then
-        # Check file age to avoid rapid double-triggers
+        # Check debounce (1.0s)
         NOW=$(date +%s)
         FILE_TIME=$(stat -c %Y "$PID_FILE")
         if (( NOW - FILE_TIME < 1 )); then
-            log "Debounce: Ignoring stop request (too soon after start)."
+            log "Debounce hit. Ignoring."
             exit 0
         fi
         stop_recording
     else
-        log "Stale PID file found. Cleaning up and starting new recording."
         rm -f "$PID_FILE"
         start_recording
     fi
