@@ -1,0 +1,7 @@
+tmp/
+models/*.bin
+whisper.cpp/
+bin/whisperstt-hold
+*.wav
+*.txt
+xbindkeys.log
