@@ -1,136 +1,99 @@
-#!/usr/bin/zsh
+#!/bin/bash
 
-# --- Configuration ---
 PROJECT_DIR="/home/ani/stt"
-MODEL_PATH="$PROJECT_DIR/models/ggml-base.en.bin"
-WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
 TMP_DIR="$PROJECT_DIR/tmp"
+PID_FILE="$TMP_DIR/record.pid"
+AUDIO_FILE="$TMP_DIR/audio.wav"
 LOG_FILE="$TMP_DIR/stt.log"
-PID_FILE="$TMP_DIR/stt.pid"
-AUDIO_FILE="$TMP_DIR/stt_recording.wav"
-
-# Status text
-STATUS_TEXT="recording..."
-STATUS_LEN=${#STATUS_TEXT}
-
-# Ydotool socket
-export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
+YDOTOOL_SOCKET="/tmp/.ydotool_socket"
 
 mkdir -p "$TMP_DIR"
 
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
+
+# Helper to type text via ydotool
+type_text() {
+    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool type "$1" 2>>"$LOG_FILE"
 }
 
-wait_for_release() {
-    local KBD_ID=$(xinput list | grep -i "keyboard" | grep -v "XTEST" | head -n 1 | grep -o "id=[0-9]*" | cut -d= -f2)
-    [[ -z "$KBD_ID" ]] && return
-    # Wait for Copilot key (201) to be released
-    while xinput query-state "$KBD_ID" 2>/dev/null | grep -qE "key\[201\]=down"; do
-        sleep 0.05
-    done
+# Helper to type text safely
+type_text_safely() {
+    # If we are in start mode, we might still be holding the Copilot key.
+    # The Copilot key is often Meta+Shift+F23.
+    # We add a delay to allow the OS to process the key release.
+    sleep 0.2
+    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool type "$1" 2>>"$LOG_FILE"
 }
 
-# Cleanup on errors
-trap 'rm -f "$PID_FILE" 2>/dev/null' ERR
-
-start_recording() {
-    log "--- START CYCLE ---"
-    
-    # Wait for keys to be released
-    wait_for_release
-    
-    # Check if ydotool is responsive
-    if ! ydotool type "" 2>/dev/null; then
-        log "Error: ydotool unresponsive."
-        return
-    fi
-
-    # Type status
-    ydotool type "$STATUS_TEXT"
-    
-    rm -f "$AUDIO_FILE"
-    
-    # Start arecord
-    # Use -t wav and -r 16000 for whisper compatibility
-    arecord -f cd -r 16000 -c 1 -q "$AUDIO_FILE" &
-    local REC_PID=$!
-    echo "$REC_PID" > "$PID_FILE"
-    log "Recording started (PID $REC_PID)"
+# Helper to press a key via ydotool (14 is BackSpace)
+press_key() {
+    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool key "$1":1 "$1":0 2>>"$LOG_FILE"
 }
 
-stop_recording() {
-    log "--- STOP CYCLE ---"
-    
-    # Wait for keys to be released
-    wait_for_release
-    
-    local PID=$(cat "$PID_FILE")
-    rm -f "$PID_FILE"
-    
-    if kill -0 "$PID" 2>/dev/null; then
-        # Capture the last bits of speech
-        sleep 0.4
-        kill "$PID"
-        wait "$PID" 2>/dev/null
-        log "Recording stopped."
-    else
-        log "Recording process $PID not found."
-    fi
-    
-    # Erase status
-    log "Erasing status text..."
-    # 14 is Backspace
-    for ((i=1; i<=$STATUS_LEN; i++)); do
-        ydotool key 14:1 14:0
-    done
-    
-    if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
-        log "Error: Audio file empty."
-        return
-    fi
-
-    log "Transcribing..."
-    
-    local TEXT=$(
-    "$WHISPER_CLI" \
-        -m "$MODEL_PATH" \
-        -f "$AUDIO_FILE" \
-        -nt \
-        2>>"$LOG_FILE" \
-        | tail -n 1 \
-        | sed 's/^ *//;s/ *$//'
-    )
-    
-    log "Raw Transcription: '$TEXT'"
-
-    # Hallucination filter
-    if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" || "$TEXT" == "[BLANK]" || "$TEXT" == "[wind]" || "$TEXT" == "[silence]" ]]; then
-        log "Discarding hallucination."
-        return
-    fi
-
-    log "Injecting text..."
-    ydotool type "$TEXT " 2>>"$LOG_FILE"
-    log "Cycle complete."
-}
-
-# Toggle
-if [[ -f "$PID_FILE" ]]; then
-    RUNNING_PID=$(cat "$PID_FILE")
-    if kill -0 "$RUNNING_PID" 2>/dev/null; then
-        # Check debounce (1.0s)
-        NOW=$(date +%s)
-        FILE_TIME=$(stat -c %Y "$PID_FILE")
-        if (( NOW - FILE_TIME < 1 )); then
-            log "Debounce hit. Ignoring."
+case "$1" in
+    start)
+        if [ -f "$PID_FILE" ]; then
+            log "Already recording. Skipping."
             exit 0
         fi
-        stop_recording
-    else
+        log "--- START RECORDING ---"
+        
+        # Inline feedback
+        type_text_safely "recording..."
+        
+        rm -f "$AUDIO_FILE"
+        
+        # Start recording
+        arecord -f S16_LE -r 16000 -c 1 -q "$AUDIO_FILE" 2>>"$LOG_FILE" &
+        REC_PID=$!
+        echo $REC_PID > "$PID_FILE"
+        ;;
+        
+    stop)
+        # Give 'start' a tiny moment to write the PID file
+        for i in {1..10}; do
+            [ -f "$PID_FILE" ] && break
+            sleep 0.05
+        done
+
+        if [ ! -f "$PID_FILE" ]; then
+            log "No recording in progress."
+            exit 0
+        fi
+        
+        PID=$(cat "$PID_FILE")
         rm -f "$PID_FILE"
-        start_recording
-    fi
-else
-    start_recording
-fi
+        
+        if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            wait "$PID" 2>/dev/null
+        fi
+        
+        log "Recording stopped. Transcribing..."
+        
+        # Erase "recording..." (12 characters)
+        # We wait for the release of the key before backspacing
+        sleep 0.1
+        for i in {1..12}; do
+            press_key 14
+        done
+        
+        TEXT=$("$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli" \
+            -m "$PROJECT_DIR/models/ggml-base.en.bin" \
+            -f "$AUDIO_FILE" \
+            -nt 2>>"$LOG_FILE" \
+            | tail -n 1 \
+            | sed 's/^ *//;s/ *$//')
+        
+        # Basic Hallucination/Silence Filter
+        if [[ -z "$TEXT" || "$TEXT" =~ ^\[.*\]$ || "$TEXT" =~ ^\(.*\)$ || "$TEXT" == *"BLANK_AUDIO"* ]]; then
+            log "Ignored hallucination: '$TEXT'"
+            exit 0
+        fi
+        
+        log "Transcription: $TEXT"
+        
+        type_text_safely "$TEXT "
+        log "Injected using ydotool."
+        ;;
+esac
