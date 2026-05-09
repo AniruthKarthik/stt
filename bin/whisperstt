@@ -22,32 +22,46 @@ notify() {
 }
 
 start_recording() {
-    if [[ -f "$PID_FILE" ]]; then
-        local OLD_PID=$(cat "$PID_FILE")
-        if kill -0 "$OLD_PID" 2>/dev/null; then exit 0; fi
-    fi
-    log "--- STT Start ---"
-    notify "Listening..."
+    log "--- Toggle Start ---"
+    notify "Recording started..."
     rm -f "$AUDIO_FILE"
+    
+    # Start arecord in background
     arecord -f cd -q "$AUDIO_FILE" &
-    echo $! > "$PID_FILE"
+    local REC_PID=$!
+    echo "$REC_PID" > "$PID_FILE"
+    log "Recording process started: $REC_PID"
 }
 
 stop_recording() {
-    if [[ ! -f "$PID_FILE" ]]; then return; fi
-    local PID=$(cat "$PID_FILE")
-    rm -f "$PID_FILE"
-    if kill -0 "$PID" 2>/dev/null; then
-        sleep 0.2
-        kill "$PID"
-        wait "$PID" 2>/dev/null
-    fi
-    log "Recording stopped."
-    if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
-        log "Error: Audio file empty."
+    log "--- Toggle Stop ---"
+    if [[ ! -f "$PID_FILE" ]]; then
+        log "Stop requested but no active recording found."
         return
     fi
+    
+    local PID=$(cat "$PID_FILE")
+    rm -f "$PID_FILE"
+    
+    if kill -0 "$PID" 2>/dev/null; then
+        # Small delay to ensure the last bit of audio is captured
+        sleep 0.3
+        kill "$PID"
+        wait "$PID" 2>/dev/null
+        log "Recording process stopped."
+    else
+        log "Warning: Recording process $PID not found."
+    fi
+    
+    if [[ ! -f "$AUDIO_FILE" || ! -s "$AUDIO_FILE" ]]; then
+        log "Error: Audio file is missing or empty."
+        notify "Error: No audio captured"
+        return
+    fi
+
     log "Transcribing..."
+    notify "Transcribing..."
+    
     local TEXT=$(
     "$WHISPER_CLI" \
         -m "$MODEL_PATH" \
@@ -57,28 +71,45 @@ stop_recording() {
         | tail -n 1 \
         | sed 's/^ *//;s/ *$//'
     )
-    log "Result: '$TEXT'"
-    if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" ]]; then
-        log "Hallucination ignored."
+    
+    log "Transcription Result: '$TEXT'"
+
+    # Hallucination filter
+    if [[ -z "$TEXT" || "$TEXT" == "[BLANK_AUDIO]" || "$TEXT" == "[MUSIC]" || "$TEXT" == "[MUSIC PLAYING]" || "$TEXT" == "[BLANK]" || "$TEXT" == "[wind]" || "$TEXT" == "[silence]" ]]; then
+        log "Discarding result (empty or hallucination: '$TEXT')."
+        notify "No speech detected"
         return
     fi
-    log "Injecting..."
+
+    log "Injecting text into focused window..."
+    notify "Typed: $TEXT"
+    
     export YDOTOOL_SOCKET="/run/user/$(id -u)/.ydotool_socket"
-    ydotool type "$TEXT " 2>>"$LOG_FILE"
-    log "Done."
+    if ydotool type "$TEXT " 2>>"$LOG_FILE"; then
+        log "Injection successful."
+    else
+        log "Injection failed."
+        notify "Error: Injection failed"
+    fi
 }
 
-# --- Main ---
-start_recording
-
-# Wait for release using libinput
-log "Waiting for key release..."
-# Watch event2 (internal kbd) and event3 (receiver)
-timeout 20 libinput debug-events /dev/input/event2 /dev/input/event3 | while read -r line; do
-    if [[ "$line" == *"released"* ]]; then
-        log "Release event: $line"
-        break
+# --- Main Logic ---
+if [[ -f "$PID_FILE" ]]; then
+    RUNNING_PID=$(cat "$PID_FILE")
+    if kill -0 "$RUNNING_PID" 2>/dev/null; then
+        # Check file age to avoid rapid double-triggers
+        NOW=$(date +%s)
+        FILE_TIME=$(stat -c %Y "$PID_FILE")
+        if (( NOW - FILE_TIME < 1 )); then
+            log "Debounce: Ignoring stop request (too soon after start)."
+            exit 0
+        fi
+        stop_recording
+    else
+        log "Stale PID file found. Cleaning up and starting new recording."
+        rm -f "$PID_FILE"
+        start_recording
     fi
-done
-
-stop_recording
+else
+    start_recording
+fi
