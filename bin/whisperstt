@@ -34,6 +34,25 @@ press_key() {
     YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool key "$1":1 "$1":0 2>>"$LOG_FILE"
 }
 
+# Helper to paste text via clipboard for instant insertion
+paste_text() {
+    local text="$1"
+    if [[ -n "$WAYLAND_DISPLAY" ]]; then
+        printf "%s" "$text" | wl-copy
+    elif [[ -n "$DISPLAY" ]]; then
+        printf "%s" "$text" | xclip -selection clipboard
+    else
+        log "No display detected, falling back to typing."
+        type_text_safely "$text"
+        return
+    fi
+    
+    # Small delay to allow the clipboard to be populated and avoid race conditions
+    sleep 0.1
+    # Simulate Ctrl+v (Left Ctrl: 29, V: 47)
+    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool key 29:1 47:1 47:0 29:0 2>>"$LOG_FILE"
+}
+
 case "$1" in
     start)
         if [ -f "$PID_FILE" ]; then
@@ -42,7 +61,7 @@ case "$1" in
         fi
         log "--- START RECORDING ---"
         
-        # Inline feedback
+        # Inline feedback (animated typing)
         type_text_safely "recording..."
         
         rm -f "$AUDIO_FILE"
@@ -75,7 +94,7 @@ case "$1" in
         
         log "Recording stopped. Transcribing..."
         
-        # Erase "recording..." (12 characters)
+        # Erase "recording..." (12 characters) - animated erasure
         # We wait for the release of the key before backspacing
         sleep 0.1
         for i in {1..12}; do
@@ -97,7 +116,8 @@ case "$1" in
         
         log "Transcription: $TEXT"
         
-        type_text_safely "$TEXT "
-        log "Injected using ydotool."
+        # Paste the result instantly
+        paste_text "$TEXT "
+        log "Injected using clipboard/ydotool."
         ;;
 esac
