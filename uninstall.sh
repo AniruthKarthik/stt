@@ -1,13 +1,19 @@
 #!/bin/bash
 
-# STT Project Uninstaller
+# STT Uninstaller
 # This script removes services and configuration files created by install.sh
 
 set -e
 
+# Ensure we are not running as root, but can use sudo
+if [ "$EUID" -eq 0 ]; then
+  echo "Please do not run this script as root/sudo directly. It will ask for sudo when needed."
+  exit 1
+fi
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "--- STT Project Uninstaller ---"
+echo "--- STT Uninstaller ---"
 
 # 1. Stop and disable stt-daemon user service
 if systemctl --user is-active --quiet stt-daemon.service 2>/dev/null || systemctl --user is-enabled --quiet stt-daemon.service 2>/dev/null; then
@@ -35,16 +41,10 @@ sudo udevadm control --reload-rules && sudo udevadm trigger || true
 # 4. Cleanup temporary files and logs
 rm -rf "$PROJECT_DIR/tmp"
 
-# 4. Kill any stray processes associated with the project
+# 4. Kill any stray processes
 echo "Killing any remaining STT processes..."
 pkill -f "stt-daemon" || true
 pkill -f "whisperstt" || true
-# Note: we don't pkill evtest globally as it might be used elsewhere, 
-# but stopping the service should have handled its children.
-
-# 5. Optional: Clean up cloned whisper.cpp and models
-# We keep these by default to avoid accidental deletion of large downloads,
-# but we inform the user how to remove them.
 
 echo "--------------------------------------------------"
 echo "Uninstallation complete!"
@@ -53,6 +53,6 @@ echo "Note:"
 echo "- The 'input' group membership was NOT removed for your user."
 echo "- whisper.cpp source and model files were NOT removed."
 echo ""
-echo "To completely remove the project, you can now delete the directory:"
+echo "To completely remove STT, you can now delete the directory:"
 echo "  rm -rf $PROJECT_DIR"
 echo "--------------------------------------------------"

@@ -1,8 +1,14 @@
 #!/bin/bash
 
-# STT Project Installer
-# A distribution-agnostic installer for the STT Project.
+# STT Installer
+# A distribution-agnostic installer for STT.
 set -e
+
+# Ensure we are not running as root, but can use sudo
+if [ "$EUID" -eq 0 ]; then
+  echo "Please do not run this script as root/sudo directly. It will ask for sudo when needed."
+  exit 1
+fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_PATH="$PROJECT_DIR/bin/whisperstt"
@@ -11,7 +17,7 @@ MODEL_DIR="$PROJECT_DIR/models"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 WHISPER_REPO="https://github.com/ggerganov/whisper.cpp"
 
-echo "--- STT Project Installer (Linux Universal) ---"
+echo "--- STT Installer (Linux Universal) ---"
 
 mkdir -p "$PROJECT_DIR/tmp"
 mkdir -p "$PROJECT_DIR/bin"
@@ -19,6 +25,7 @@ mkdir -p "$PROJECT_DIR/models"
 
 # --- Distribution Detection & Dependency Installation ---
 install_dependencies() {
+    echo "Installing dependencies... This may require your password."
     if command -v dnf &> /dev/null; then
         echo "Detected Fedora/RHEL-based system (dnf)."
         sudo dnf install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool git curl
@@ -29,6 +36,9 @@ install_dependencies() {
     elif command -v pacman &> /dev/null; then
         echo "Detected Arch-based system (pacman)."
         sudo pacman -S --needed --noconfirm alsa-utils wl-clipboard evtest make gcc cmake libnotify ydotool git curl
+    elif command -v zypper &> /dev/null; then
+        echo "Detected openSUSE-based system (zypper)."
+        sudo zypper install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool git curl
     else
         echo "Unknown distribution. Please ensure you have the following installed:"
         echo "alsa-utils, wl-clipboard, evtest, make, g++, cmake, libnotify, ydotool, git, curl"
@@ -66,7 +76,9 @@ fi
 if [ ! -f "$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli" ]; then
     echo "Building whisper.cpp..."
     cd "$PROJECT_DIR/whisper.cpp"
-    mkdir -p build && cd build && cmake .. && make -j$(nproc) whisper-cli
+    mkdir -p build && cd build
+    cmake .. -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF
+    make -j$(nproc) whisper-cli
     cd "$PROJECT_DIR"
 fi
 
@@ -114,6 +126,10 @@ if [ -z "$YDOTOOLD_PATH" ]; then
     exit 1
 fi
 
+# Stop any existing ydotool services to avoid conflicts
+sudo systemctl stop ydotool.service ydotoold.service 2>/dev/null || true
+sudo rm -f /tmp/.ydotool_socket
+
 sudo bash -c "cat > /etc/systemd/system/ydotoold.service <<EOF
 [Unit]
 Description=ydotoold - backend for ydotool
@@ -122,7 +138,8 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=$YDOTOOLD_PATH --socket-path /tmp/.ydotool_socket --socket-own $(id -u):$(id -g)
-ExecStartPost=/usr/bin/chmod 666 /tmp/.ydotool_socket
+# Wait for the socket to be created before changing permissions
+ExecStartPost=/usr/bin/bash -c 'while [ ! -S /tmp/.ydotool_socket ]; do sleep 0.1; done; chmod 666 /tmp/.ydotool_socket'
 Restart=always
 
 [Install]
