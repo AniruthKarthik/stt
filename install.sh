@@ -23,19 +23,22 @@ mkdir -p "$PROJECT_DIR/tmp"
 mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$PROJECT_DIR/models"
 
+# Make binaries executable
+chmod +x "$PROJECT_DIR/bin/stt-daemon" "$PROJECT_DIR/bin/whisperstt" 2>/dev/null || true
+
 # --- Distribution Detection & Dependency Installation ---
 install_dependencies() {
     echo "Installing dependencies... This may require your password."
-    if command -v dnf &> /dev/null; then
+    if command -v pacman &> /dev/null; then
+        echo "Detected Arch-based system (pacman)."
+        sudo pacman -S --needed --noconfirm alsa-utils wl-clipboard evtest make gcc cmake libnotify ydotool git curl
+    elif command -v dnf &> /dev/null; then
         echo "Detected Fedora/RHEL-based system (dnf)."
         sudo dnf install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool git curl
     elif command -v apt-get &> /dev/null; then
         echo "Detected Debian/Ubuntu-based system (apt)."
         sudo apt-get update
         sudo apt-get install -y alsa-utils wl-clipboard evtest make g++ cmake libnotify-bin ydotool git curl
-    elif command -v pacman &> /dev/null; then
-        echo "Detected Arch-based system (pacman)."
-        sudo pacman -S --needed --noconfirm alsa-utils wl-clipboard evtest make gcc cmake libnotify ydotool git curl
     elif command -v zypper &> /dev/null; then
         echo "Detected openSUSE-based system (zypper)."
         sudo zypper install -y alsa-utils wl-clipboard evtest make gcc-c++ cmake libnotify ydotool git curl
@@ -48,16 +51,18 @@ install_dependencies() {
 }
 
 # Check for missing commands and trigger installation if needed
-commands=("arecord" "wl-copy" "evtest" "make" "g++" "cmake" "notify-send" "ydotool" "git" "curl")
+commands=("arecord" "wl-copy" "evtest" "make" "cmake" "notify-send" "ydotool" "git" "curl")
 MISSING=false
 for cmd in "${commands[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
-        # Check for g++ specifically as it might be named gcc-c++
-        if [[ "$cmd" == "g++" ]] && command -v g++ &> /dev/null; then continue; fi
         MISSING=true
         break
     fi
 done
+
+if ! command -v g++ &> /dev/null && ! command -v c++ &> /dev/null; then
+    MISSING=true
+fi
 
 if [ "$MISSING" = true ]; then
     echo "Missing dependencies. Attempting to install..."
@@ -66,19 +71,20 @@ fi
 
 # --- Core Logic Setup ---
 
-# Clone whisper.cpp if missing
-if [ ! -d "$PROJECT_DIR/whisper.cpp" ]; then
+# Clone whisper.cpp if missing or empty
+if [ ! -f "$PROJECT_DIR/whisper.cpp/CMakeLists.txt" ]; then
     echo "Cloning whisper.cpp..."
-    git clone "$WHISPER_REPO" "$PROJECT_DIR/whisper.cpp"
+    rm -rf "$PROJECT_DIR/whisper.cpp"
+    git clone --depth 1 "$WHISPER_REPO" "$PROJECT_DIR/whisper.cpp"
 fi
 
 # Build whisper.cpp
-if [ ! -f "$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli" ]; then
+if [ ! -f "$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli" ] && [ ! -f "$PROJECT_DIR/whisper.cpp/bin/whisper-cli" ]; then
     echo "Building whisper.cpp..."
     cd "$PROJECT_DIR/whisper.cpp"
     mkdir -p build && cd build
-    cmake .. -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF
-    make -j$(nproc) whisper-cli
+    cmake .. -DWHISPER_BUILD_TESTS=OFF
+    cmake --build . --config Release --target whisper-cli -j$(nproc)
     cd "$PROJECT_DIR"
 fi
 
@@ -93,11 +99,11 @@ fi
 # Handle the 'input' group (common for evdev access)
 INPUT_GROUP="input"
 if ! getent group "$INPUT_GROUP" > /dev/null; then
-    # Some distros might use a different group, but 'input' is the standard kernel convention
     echo "Warning: '$INPUT_GROUP' group not found. Proceeding with caution."
 fi
 
-if ! groups | grep -q "$INPUT_GROUP"; then
+# Check if user is in group in /etc/group
+if ! id -nG "$USER" 2>/dev/null | grep -qw "$INPUT_GROUP"; then
     echo "Adding $USER to the '$INPUT_GROUP' group..."
     sudo usermod -aG "$INPUT_GROUP" "$USER"
     echo "Successfully added to group. NOTE: You MUST log out and back in for this to take effect."
@@ -108,46 +114,57 @@ if [ ! -w /dev/uinput ]; then
     echo "Setting up uinput device permissions..."
     # Create a udev rule for persistence across reboots
     sudo bash -c "cat > /etc/udev/rules.d/80-stt-uinput.rules <<EOF
-KERNEL==\"uinput\", GROUP=\"$INPUT_GROUP\", MODE=\"0660\"
+KERNEL==\"uinput\", GROUP=\"$INPUT_GROUP\", MODE=\"0660\", OPTIONS+=\"static_node=uinput\"
 EOF"
-    sudo udevadm control --reload-rules && sudo udevadm trigger
+    sudo udevadm control --reload-rules && sudo udevadm trigger || true
     # Immediate fix for current session
-    sudo chmod 0660 /dev/uinput
-    sudo chown root:"$INPUT_GROUP" /dev/uinput
+    sudo chmod 0660 /dev/uinput || true
+    sudo chown root:"$INPUT_GROUP" /dev/uinput || true
 fi
 
 # --- Service Configuration ---
 
-# Configure ydotoold system service
-echo "Configuring ydotoold system service..."
-YDOTOOLD_PATH=$(command -v ydotoold)
-if [ -z "$YDOTOOLD_PATH" ]; then
-    echo "Error: ydotoold not found. Please ensure ydotool is installed."
-    exit 1
-fi
+# Configure ydotool service
+# On Arch Linux and systemd systems where ydotool user service exists, use it.
+# Otherwise, fall back to a system-wide service.
+if systemctl --user list-unit-files ydotool.service &>/dev/null; then
+    echo "Enabling ydotool user service..."
+    # Stop any conflicting system ydotoold service
+    if systemctl is-active --quiet ydotoold.service 2>/dev/null; then
+        sudo systemctl stop ydotoold.service 2>/dev/null || true
+        sudo systemctl disable ydotoold.service 2>/dev/null || true
+    fi
+    systemctl --user daemon-reload
+    systemctl --user enable --now ydotool.service
+else
+    echo "Configuring ydotoold system service..."
+    YDOTOOLD_PATH=$(command -v ydotoold)
+    if [ -z "$YDOTOOLD_PATH" ]; then
+        echo "Error: ydotoold not found. Please ensure ydotool is installed."
+        exit 1
+    fi
 
-# Stop any existing ydotool services to avoid conflicts
-sudo systemctl stop ydotool.service ydotoold.service 2>/dev/null || true
-sudo rm -f /tmp/.ydotool_socket
+    sudo systemctl stop ydotool.service ydotoold.service 2>/dev/null || true
+    sudo rm -f /tmp/.ydotool_socket
 
-sudo bash -c "cat > /etc/systemd/system/ydotoold.service <<EOF
+    sudo bash -c "cat > /etc/systemd/system/ydotoold.service <<EOF
 [Unit]
 Description=ydotoold - backend for ydotool
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=$YDOTOOLD_PATH --socket-path /tmp/.ydotool_socket --socket-own $(id -u):$(id -g)
-# Wait for the socket to be created before changing permissions
-ExecStartPost=/usr/bin/bash -c 'while [ ! -S /tmp/.ydotool_socket ]; do sleep 0.1; done; chmod 666 /tmp/.ydotool_socket'
+ExecStartPre=-/usr/bin/rm -f /tmp/.ydotool_socket
+ExecStart=$YDOTOOLD_PATH --socket-path /tmp/.ydotool_socket --socket-own $(id -u):$(id -g) --socket-perm 0666
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF"
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now ydotoold.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now ydotoold.service
+fi
 
 # Set up autostart stt-daemon (user service)
 mkdir -p ~/.config/systemd/user/
@@ -161,6 +178,7 @@ Type=simple
 ExecStart=$DAEMON_PATH
 Restart=always
 RestartSec=3
+Environment="PATH=$PATH"
 
 [Install]
 WantedBy=default.target
@@ -175,4 +193,7 @@ echo "The STT Daemon is running in the background."
 echo "Press and HOLD F8 to speak, release to transcribe."
 echo "Check logs at: $PROJECT_DIR/tmp/stt.log"
 echo "--------------------------------------------------"
-echo "IMPORTANT: If you were just added to the 'input' group, please log out and log back in."
+if ! id -nG 2>/dev/null | grep -qw "$INPUT_GROUP"; then
+    echo "IMPORTANT: Your current session does not yet have '$INPUT_GROUP' active."
+    echo "Please log out and log back in (or run 'newgrp $INPUT_GROUP') for permissions to apply."
+fi

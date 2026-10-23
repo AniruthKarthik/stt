@@ -1,39 +1,62 @@
 #!/bin/bash
 # STT Trigger Daemon
-# Listens to all physical input devices for KEY_F8
+# Listens to physical keyboard input devices for KEY_F8
 
-# Find the directory where this script is located
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
 WHISPERSTT_PATH="$BIN_DIR/whisperstt"
+TMP_DIR="$PROJECT_DIR/tmp"
+PID_FILE="$TMP_DIR/stt-daemon.pid"
 
-# Kill any existing instances to avoid duplicates
-pkill -f "evtest" 2>/dev/null
-pkill -f "whisperstt" 2>/dev/null
+mkdir -p "$TMP_DIR"
+
+# Clean shutdown handler
+cleanup() {
+    trap - SIGTERM SIGINT EXIT
+    kill $(jobs -p) 2>/dev/null || true
+    rm -f "$PID_FILE"
+    exit 0
+}
+trap cleanup SIGTERM SIGINT EXIT
+
+# Kill any previous daemon instances
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null && [ "$OLD_PID" -ne "$$" ]; then
+        kill "$OLD_PID" 2>/dev/null || true
+    fi
+fi
+echo $$ > "$PID_FILE"
 
 echo "Starting STT Trigger Daemon (Listening for F8 Key)..."
 
-# Find and listen to physical input devices only
-# We exclude "ydotoold" and other virtual devices to avoid loops
+# Find and listen to physical keyboard input devices
 for dev in /dev/input/event*; do
-    if [ -c "$dev" ] && [ -r "$dev" ]; then
-        NAME=$(cat /sys/class/input/$(basename "$dev")/device/name 2>/dev/null)
-        if [[ "$NAME" == *"ydotoold"* || "$NAME" == *"Virtual"* ]]; then
-            continue
-        fi
-        
-        (
-            stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" -v wp="$WHISPERSTT_PATH" '
-            /KEY_F8\), value 1/ { 
-                print "[Trigger ON: " n " (" d ")]"
-                system(wp " start") 
-            }
-            /KEY_F8\), value 0/ { 
-                print "[Trigger OFF: " n " (" d ")]"
-                system(wp " stop") 
-            }
-            '
-        ) &
-    fi
+    [ -c "$dev" ] && [ -r "$dev" ] || continue
+
+    bn=$(basename "$dev")
+    NAME=$(cat "/sys/class/input/$bn/device/name" 2>/dev/null || echo "")
+
+    # Exclude virtual devices and non-keyboard peripherals
+    [[ "$NAME" == *"ydotoold"* || "$NAME" == *"Virtual"* ]] && continue
+    [[ "$NAME" == *"Mouse"* || "$NAME" == *"Touchpad"* ]] && continue
+
+    # Check for key capability
+    caps=$(cat "/sys/class/input/$bn/device/capabilities/key" 2>/dev/null || echo "0")
+    [ -z "$caps" ] || [ "$caps" = "0" ] && continue
+
+    (
+        stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" -v wp="$WHISPERSTT_PATH" '
+        /KEY_F8\), value 1/ { 
+            print "[Trigger ON: " n " (" d ")]"
+            system(wp " start") 
+        }
+        /KEY_F8\), value 0/ { 
+            print "[Trigger OFF: " n " (" d ")]"
+            system(wp " stop") 
+        }
+        '
+    ) &
 done
 
 wait

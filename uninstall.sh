@@ -24,7 +24,14 @@ if systemctl --user is-active --quiet stt-daemon.service 2>/dev/null || systemct
     systemctl --user daemon-reload
 fi
 
-# 2. Stop and disable ydotoold system service
+# 2. Stop and disable ydotool user service if running
+if systemctl --user is-active --quiet ydotool.service 2>/dev/null; then
+    echo "Stopping ydotool user service..."
+    systemctl --user stop ydotool.service || true
+    systemctl --user disable ydotool.service || true
+fi
+
+# 3. Stop and disable ydotoold system service if installed
 if systemctl is-active --quiet ydotoold.service 2>/dev/null || systemctl is-enabled --quiet ydotoold.service 2>/dev/null; then
     echo "Stopping and disabling ydotoold system service..."
     sudo systemctl stop ydotoold.service || true
@@ -33,15 +40,18 @@ if systemctl is-active --quiet ydotoold.service 2>/dev/null || systemctl is-enab
     sudo systemctl daemon-reload
 fi
 
-# 3. Remove udev rules
-echo "Removing udev rules..."
-sudo rm -f /etc/udev/rules.d/80-stt-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger || true
+# 4. Remove udev rules
+if [ -f /etc/udev/rules.d/80-stt-uinput.rules ]; then
+    echo "Removing udev rules..."
+    sudo rm -f /etc/udev/rules.d/80-stt-uinput.rules
+    sudo udevadm control --reload-rules && sudo udevadm trigger || true
+fi
 
-# 4. Cleanup temporary files and logs
+# 5. Cleanup temporary files and sockets
 rm -rf "$PROJECT_DIR/tmp"
+sudo rm -f /tmp/.ydotool_socket 2>/dev/null || true
 
-# 4. Kill any stray processes
+# 6. Kill any stray processes
 echo "Killing any remaining STT processes..."
 pkill -f "stt-daemon" || true
 pkill -f "whisperstt" || true

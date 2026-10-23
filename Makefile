@@ -20,16 +20,17 @@ install:
 	./install.sh
 
 fetch-whisper:
-	@if [ ! -d "whisper.cpp" ]; then \
+	@if [ ! -f "whisper.cpp/CMakeLists.txt" ]; then \
 		echo "Cloning whisper.cpp..."; \
-		git clone $(WHISPER_REPO); \
+		rm -rf whisper.cpp; \
+		git clone --depth 1 $(WHISPER_REPO) whisper.cpp; \
 	else \
 		echo "whisper.cpp already exists."; \
 	fi
 
 build-whisper: fetch-whisper
 	@echo "Building whisper.cpp..."
-	cd whisper.cpp && mkdir -p build && cd build && cmake .. && make -j$(shell nproc) whisper-cli
+	cd whisper.cpp && mkdir -p build && cd build && cmake .. -DWHISPER_BUILD_TESTS=OFF && cmake --build . --config Release --target whisper-cli -j$(shell nproc)
 
 download-model:
 	@echo "Downloading model..."
