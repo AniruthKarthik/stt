@@ -2,6 +2,7 @@ PROJECT_DIR := $(shell pwd)
 MODEL_URL := https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 MODEL_PATH := models/ggml-base.en.bin
 WHISPER_REPO := https://github.com/ggerganov/whisper.cpp
+NPROC := $(shell nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 
 .PHONY: all install build-whisper download-model fetch-whisper uninstall clean help
 
@@ -30,7 +31,7 @@ fetch-whisper:
 
 build-whisper: fetch-whisper
 	@echo "Building whisper.cpp..."
-	cd whisper.cpp && mkdir -p build && cd build && cmake .. -DWHISPER_BUILD_TESTS=OFF && cmake --build . --config Release --target whisper-cli -j$(shell nproc)
+	cd whisper.cpp && mkdir -p build && cd build && cmake .. -DWHISPER_BUILD_TESTS=OFF && cmake --build . --config Release --target whisper-cli -j$(NPROC)
 
 download-model:
 	@echo "Downloading model..."

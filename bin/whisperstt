@@ -2,7 +2,8 @@
 
 # STT - Speech to Text Single-Instance Runner
 # Runs on-demand with minimal memory footprint (0 MB RAM when idle).
-# Once the transcription is complete, it cleans up all resources and terminates.
+# Cross-distribution compatible (Arch, Debian/Ubuntu, Fedora, openSUSE, Alpine, Void, etc.)
+# Once transcription is complete, it injects text and terminates immediately.
 
 set -e
 
@@ -36,23 +37,54 @@ notify() {
     fi
 }
 
-# Auto-detect active ydotool socket across user and system services
+# Auto-detect active ydotool socket across user, system, and custom services
 get_ydotool_socket() {
     if [ -n "$YDOTOOL_SOCKET" ] && [ -S "$YDOTOOL_SOCKET" ]; then
         echo "$YDOTOOL_SOCKET"
-    elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/.ydotool_socket" ]; then
-        echo "$XDG_RUNTIME_DIR/.ydotool_socket"
-    elif [ -S "/run/user/$(id -u)/.ydotool_socket" ]; then
-        echo "/run/user/$(id -u)/.ydotool_socket"
-    elif [ -S "/tmp/.ydotool_socket" ]; then
-        echo "/tmp/.ydotool_socket"
+        return 0
     fi
+    for s in \
+        "${XDG_RUNTIME_DIR:-}/.ydotool_socket" \
+        "/run/user/$(id -u)/.ydotool_socket" \
+        "/tmp/.ydotool_socket" \
+        "${HOME}/.cache/.ydotool_socket"; do
+        if [ -n "$s" ] && [ -S "$s" ]; then
+            echo "$s"
+            return 0
+        fi
+    done
+    return 1
 }
 
-# Run ydotool with the detected socket
+# Auto-start ydotoold in user session if no daemon is currently active
+ensure_ydotoold() {
+    if get_ydotool_socket >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local ydotoold_bin
+    ydotoold_bin=$(command -v ydotoold 2>/dev/null || echo "")
+    if [ -n "$ydotoold_bin" ]; then
+        local user_sock="${XDG_RUNTIME_DIR:-/tmp}/.ydotool_socket"
+        rm -f "$user_sock"
+        "$ydotoold_bin" --socket-path "$user_sock" --socket-perm 0600 &>>"$LOG_FILE" &
+        for _ in {1..20}; do
+            if [ -S "$user_sock" ]; then
+                export YDOTOOL_SOCKET="$user_sock"
+                log "Auto-started ydotoold daemon at $user_sock"
+                return 0
+            fi
+            sleep 0.05
+        done
+    fi
+    return 1
+}
+
+# Run ydotool with the detected or auto-started socket
 run_ydotool() {
+    ensure_ydotoold || true
     local sock
-    sock="$(get_ydotool_socket)"
+    sock="$(get_ydotool_socket 2>/dev/null || echo "")"
     if [ -n "$sock" ]; then
         YDOTOOL_SOCKET="$sock" ydotool "$@" 2>>"$LOG_FILE"
     else
@@ -76,7 +108,7 @@ erase_feedback() {
     run_ydotool key "${args[@]}"
 }
 
-# Ensure display environment variables exist
+# Ensure display environment variables exist across Wayland and X11
 ensure_display_env() {
     if [[ -z "$WAYLAND_DISPLAY" && -n "$XDG_RUNTIME_DIR" ]]; then
         for s in "$XDG_RUNTIME_DIR"/wayland-[0-9]*; do
@@ -95,19 +127,29 @@ ensure_display_env() {
     fi
 }
 
-# Paste text via clipboard with fallback to typing
+# Paste text via clipboard (wl-copy on Wayland, xclip/xsel on X11) with typing fallback
 paste_text() {
     local text="$1"
     ensure_display_env
     local copied=false
 
+    # Try Wayland clipboard
     if [[ -n "$WAYLAND_DISPLAY" ]] && command -v wl-copy &>/dev/null; then
         if printf "%s" "$text" | wl-copy 2>>"$LOG_FILE"; then
             copied=true
         fi
-    elif [[ -n "$DISPLAY" ]] && command -v xclip &>/dev/null; then
-        if printf "%s" "$text" | xclip -selection clipboard 2>>"$LOG_FILE"; then
-            copied=true
+    fi
+
+    # Try X11 clipboard if Wayland didn't succeed
+    if [ "$copied" = false ] && [[ -n "$DISPLAY" ]]; then
+        if command -v xclip &>/dev/null; then
+            if printf "%s" "$text" | xclip -selection clipboard 2>>"$LOG_FILE"; then
+                copied=true
+            fi
+        elif command -v xsel &>/dev/null; then
+            if printf "%s" "$text" | xsel --clipboard --input 2>>"$LOG_FILE"; then
+                copied=true
+            fi
         fi
     fi
 
@@ -116,7 +158,7 @@ paste_text() {
         # Simulate Ctrl+v (Left Ctrl: 29, V: 47)
         run_ydotool key 29:1 47:1 47:0 29:0
     else
-        log "Clipboard unavailable, falling back to direct typing."
+        log "Clipboard utility unavailable, falling back to direct typing."
         type_text_safely "$text"
     fi
 }
