@@ -1,123 +1,333 @@
 #!/bin/bash
 
-# Find the project root directory (one level up from bin)
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# STT - Speech to Text Single-Instance Runner
+# Runs on-demand with minimal memory footprint (0 MB RAM when idle).
+# Cross-distribution compatible (Arch, Debian/Ubuntu, Fedora, openSUSE, Alpine, Void, etc.)
+# Once transcription is complete, it injects text and terminates immediately.
+
+set -e
+
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
 TMP_DIR="$PROJECT_DIR/tmp"
+LOCK_FILE="$TMP_DIR/stt.lock"
 PID_FILE="$TMP_DIR/record.pid"
 AUDIO_FILE="$TMP_DIR/audio.wav"
 LOG_FILE="$TMP_DIR/stt.log"
-YDOTOOL_SOCKET="/tmp/.ydotool_socket"
-WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
 MODEL_PATH="$PROJECT_DIR/models/ggml-base.en.bin"
+
+# Locate whisper-cli binary
+WHISPER_CLI="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
+if [ ! -x "$WHISPER_CLI" ]; then
+    if [ -x "$PROJECT_DIR/whisper.cpp/bin/whisper-cli" ]; then
+        WHISPER_CLI="$PROJECT_DIR/whisper.cpp/bin/whisper-cli"
+    elif command -v whisper-cli &>/dev/null; then
+        WHISPER_CLI="$(command -v whisper-cli)"
+    fi
+fi
 
 mkdir -p "$TMP_DIR"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
 
-# Helper to type text via ydotool
-type_text() {
-    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool type "$1" 2>>"$LOG_FILE"
-}
-
-# Helper to type text safely
-type_text_safely() {
-    # If we are in start mode, we might still be holding the Copilot key.
-    # The Copilot key is often Meta+Shift+F23.
-    # We add a delay to allow the OS to process the key release.
-    sleep 0.2
-    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool type "$1" 2>>"$LOG_FILE"
-}
-
-# Helper to press a key via ydotool (14 is BackSpace)
-press_key() {
-    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool key "$1":1 "$1":0 2>>"$LOG_FILE"
-}
-
-# Helper to paste text via clipboard for instant insertion
-paste_text() {
-    local text="$1"
-    if [[ -n "$WAYLAND_DISPLAY" ]]; then
-        printf "%s" "$text" | wl-copy
-    elif [[ -n "$DISPLAY" ]]; then
-        printf "%s" "$text" | xclip -selection clipboard
-    else
-        log "No display detected, falling back to typing."
-        type_text_safely "$text"
-        return
+notify() {
+    if command -v notify-send &>/dev/null; then
+        notify-send -t 1500 -a "STT" "$@" 2>/dev/null &
     fi
-    
-    # Small delay to allow the clipboard to be populated and avoid race conditions
-    sleep 0.1
-    # Simulate Ctrl+v (Left Ctrl: 29, V: 47)
-    YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool key 29:1 47:1 47:0 29:0 2>>"$LOG_FILE"
 }
 
-case "$1" in
-    start)
-        if [ -f "$PID_FILE" ]; then
-            log "Already recording. Skipping."
-            exit 0
+# Auto-detect active ydotool socket across user, system, and custom services
+get_ydotool_socket() {
+    if [ -n "$YDOTOOL_SOCKET" ] && [ -S "$YDOTOOL_SOCKET" ]; then
+        echo "$YDOTOOL_SOCKET"
+        return 0
+    fi
+    for s in \
+        "${XDG_RUNTIME_DIR:-}/.ydotool_socket" \
+        "/run/user/$(id -u)/.ydotool_socket" \
+        "/tmp/.ydotool_socket" \
+        "${HOME}/.cache/.ydotool_socket"; do
+        if [ -n "$s" ] && [ -S "$s" ]; then
+            echo "$s"
+            return 0
         fi
-        log "--- START RECORDING ---"
-        
-        # Inline feedback (animated typing)
-        type_text_safely "recording..."
-        
-        rm -f "$AUDIO_FILE"
-        
-        # Start recording
-        arecord -f S16_LE -r 16000 -c 1 -q "$AUDIO_FILE" 2>>"$LOG_FILE" &
-        REC_PID=$!
-        echo $REC_PID > "$PID_FILE"
-        ;;
-        
-    stop)
-        # Give 'start' a tiny moment to write the PID file
-        for i in {1..10}; do
-            [ -f "$PID_FILE" ] && break
+    done
+    return 1
+}
+
+# Auto-start ydotoold in user session if no daemon is currently active
+ensure_ydotoold() {
+    if get_ydotool_socket >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local ydotoold_bin
+    ydotoold_bin=$(command -v ydotoold 2>/dev/null || echo "")
+    if [ -n "$ydotoold_bin" ]; then
+        local user_sock="${XDG_RUNTIME_DIR:-/tmp}/.ydotool_socket"
+        rm -f "$user_sock"
+        "$ydotoold_bin" --socket-path "$user_sock" --socket-perm 0600 &>>"$LOG_FILE" &
+        for _ in {1..20}; do
+            if [ -S "$user_sock" ]; then
+                export YDOTOOL_SOCKET="$user_sock"
+                log "Auto-started ydotoold daemon at $user_sock"
+                return 0
+            fi
             sleep 0.05
         done
+    fi
+    return 1
+}
 
-        if [ ! -f "$PID_FILE" ]; then
-            log "No recording in progress."
-            exit 0
-        fi
-        
-        PID=$(cat "$PID_FILE")
-        rm -f "$PID_FILE"
-        
-        if kill -0 "$PID" 2>/dev/null; then
-            kill "$PID" 2>/dev/null
-            wait "$PID" 2>/dev/null
-        fi
-        
-        log "Recording stopped. Transcribing..."
-        
-        # Erase "recording..." (12 characters) - animated erasure
-        # We wait for the release of the key before backspacing
-        sleep 0.1
-        for i in {1..12}; do
-            press_key 14
+# Run ydotool with the detected or auto-started socket
+run_ydotool() {
+    ensure_ydotoold || true
+    local sock
+    sock="$(get_ydotool_socket 2>/dev/null || echo "")"
+    if [ -n "$sock" ]; then
+        YDOTOOL_SOCKET="$sock" ydotool "$@" 2>>"$LOG_FILE"
+    else
+        ydotool "$@" 2>>"$LOG_FILE"
+    fi
+}
+
+# Type text via ydotool safely
+type_text_safely() {
+    sleep 0.15
+    run_ydotool type -- "$1"
+}
+
+# Erase feedback characters in a single batched keypress
+erase_feedback() {
+    local count="${1:-12}"
+    local args=()
+    for ((i=0; i<count; i++)); do
+        args+=(14:1 14:0)
+    done
+    run_ydotool key "${args[@]}"
+}
+
+# Ensure display environment variables exist across Wayland and X11
+ensure_display_env() {
+    if [[ -z "$WAYLAND_DISPLAY" && -n "$XDG_RUNTIME_DIR" ]]; then
+        for s in "$XDG_RUNTIME_DIR"/wayland-[0-9]*; do
+            if [[ -S "$s" ]]; then
+                export WAYLAND_DISPLAY="$(basename "$s")"
+                break
+            fi
         done
-        
-        TEXT=$("$WHISPER_CLI" \
-            -m "$MODEL_PATH" \
-            -f "$AUDIO_FILE" \
-            -nt 2>>"$LOG_FILE" \
-            | tail -n 1 \
-            | sed 's/^ *//;s/ *$//')
-        
-        # Basic Hallucination/Silence Filter
-        if [[ -z "$TEXT" || "$TEXT" =~ ^\[.*\]$ || "$TEXT" =~ ^\(.*\)$ || "$TEXT" == *"BLANK_AUDIO"* ]]; then
-            log "Ignored hallucination: '$TEXT'"
-            exit 0
+    fi
+    if [[ -z "$DISPLAY" ]]; then
+        if [[ -S "/tmp/.X11-unix/X0" ]]; then
+            export DISPLAY=":0"
+        elif [[ -S "/tmp/.X11-unix/X1" ]]; then
+            export DISPLAY=":1"
         fi
-        
-        log "Transcription: $TEXT"
-        
-        # Paste the result instantly
-        paste_text "$TEXT "
-        log "Injected using clipboard/ydotool."
+    fi
+}
+
+# Paste text via clipboard (wl-copy on Wayland, xclip/xsel on X11) with typing fallback
+paste_text() {
+    local text="$1"
+    ensure_display_env
+    local copied=false
+
+    # Try Wayland clipboard
+    if [[ -n "$WAYLAND_DISPLAY" ]] && command -v wl-copy &>/dev/null; then
+        if printf "%s" "$text" | wl-copy 2>>"$LOG_FILE"; then
+            copied=true
+        fi
+    fi
+
+    # Try X11 clipboard if Wayland didn't succeed
+    if [ "$copied" = false ] && [[ -n "$DISPLAY" ]]; then
+        if command -v xclip &>/dev/null; then
+            if printf "%s" "$text" | xclip -selection clipboard 2>>"$LOG_FILE"; then
+                copied=true
+            fi
+        elif command -v xsel &>/dev/null; then
+            if printf "%s" "$text" | xsel --clipboard --input 2>>"$LOG_FILE"; then
+                copied=true
+            fi
+        fi
+    fi
+
+    if [ "$copied" = true ]; then
+        sleep 0.08
+        # Simulate Ctrl+v (Left Ctrl: 29, V: 47)
+        run_ydotool key 29:1 47:1 47:0 29:0
+    else
+        log "Clipboard utility unavailable, falling back to direct typing."
+        type_text_safely "$text"
+    fi
+}
+
+# Check if an existing recording process is active
+is_recording() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        else
+            # Stale PID file
+            rm -f "$PID_FILE"
+        fi
+    fi
+    return 1
+}
+
+start_recording() {
+    if is_recording; then
+        log "Already recording. Skipping duplicate start."
+        exit 0
+    fi
+
+    log "--- START RECORDING ---"
+    notify "🎤 Recording..." "Speak clearly, run again to transcribe."
+
+    # Inline cursor feedback
+    type_text_safely "recording..."
+
+    rm -f "$AUDIO_FILE"
+
+    # Start audio capture in background (16kHz mono WAV for whisper)
+    arecord -f S16_LE -r 16000 -c 1 -q "$AUDIO_FILE" 2>>"$LOG_FILE" &
+    local rec_pid=$!
+    echo "$rec_pid" > "$PID_FILE"
+    log "Recording started with PID $rec_pid"
+}
+
+stop_recording() {
+    if ! is_recording; then
+        log "No active recording found to stop."
+        exit 0
+    fi
+
+    local rec_pid
+    rec_pid=$(cat "$PID_FILE")
+    rm -f "$PID_FILE"
+
+    log "Stopping recording (PID $rec_pid)..."
+
+    # Stop arecord cleanly with SIGINT so WAV header is finalized
+    if kill -0 "$rec_pid" 2>/dev/null; then
+        kill -INT "$rec_pid" 2>/dev/null || true
+        wait "$rec_pid" 2>/dev/null || true
+    fi
+
+    log "Recording stopped. Transcribing..."
+    notify "⏳ Transcribing..."
+
+    # Erase "recording..." inline indicator
+    sleep 0.08
+    erase_feedback 12
+
+    if [ ! -f "$AUDIO_FILE" ] || [ ! -s "$AUDIO_FILE" ]; then
+        log "Error: Audio file is empty or missing."
+        notify "⚠️ Error" "No audio recorded."
+        rm -f "$AUDIO_FILE"
+        exit 0
+    fi
+
+    # Transcribe with whisper-cli (RAM is used only during this execution)
+    local raw_text
+    raw_text=$("$WHISPER_CLI" \
+        -m "$MODEL_PATH" \
+        -f "$AUDIO_FILE" \
+        -nt \
+        -np 2>>"$LOG_FILE" \
+        | tr '\n' ' ' \
+        | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+
+    # Cleanup audio immediately to free disk/RAM cache
+    rm -f "$AUDIO_FILE"
+
+    # Filter out silence or whisper hallucinations
+    if [[ -z "$raw_text" || "$raw_text" =~ ^\[.*\]$ || "$raw_text" =~ ^\(.*\)$ || "$raw_text" == *"BLANK_AUDIO"* ]]; then
+        log "Ignored hallucination / blank: '$raw_text'"
+        notify "STT" "No speech detected."
+        exit 0
+    fi
+
+    log "Transcription: $raw_text"
+
+    # Paste transcribed text directly into focused application
+    paste_text "$raw_text "
+    notify "✅ Transcribed" "$raw_text"
+    log "Injected successfully. Completed job, exiting."
+}
+
+cancel_recording() {
+    if is_recording; then
+        local rec_pid
+        rec_pid=$(cat "$PID_FILE")
+        rm -f "$PID_FILE"
+        kill -9 "$rec_pid" 2>/dev/null || true
+        rm -f "$AUDIO_FILE"
+        erase_feedback 12
+        notify "STT" "Recording cancelled."
+        log "Recording cancelled."
+    fi
+}
+
+ACTION="${1:-toggle}"
+
+# Status does not need exclusive lock
+if [ "$ACTION" = "status" ]; then
+    if is_recording; then
+        echo "Recording (PID: $(cat "$PID_FILE"))"
+    else
+        echo "Idle"
+    fi
+    exit 0
+fi
+
+# --- Mutual Exclusion: Ensure ONLY ONE instance executes at a time ---
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    log "Another STT process is currently active. Exiting to prevent conflict."
+    exit 0
+fi
+
+# Dispatch command
+case "$ACTION" in
+    start)
+        start_recording
+        ;;
+    stop)
+        stop_recording
+        ;;
+    toggle)
+        if is_recording; then
+            stop_recording
+        else
+            start_recording
+        fi
+        ;;
+    record|listen)
+        start_recording
+        echo "Recording started. Press Enter to stop and transcribe (or Ctrl+C to cancel)..."
+        trap cancel_recording INT TERM
+        read -r
+        stop_recording
+        ;;
+    cancel)
+        cancel_recording
+        ;;
+    *)
+        echo "Usage: $0 [toggle|start|stop|record|cancel|status]"
+        echo "  toggle (default) - Start recording if idle, or stop and transcribe if active"
+        echo "  start            - Begin recording"
+        echo "  stop             - Stop recording, transcribe, paste result, and terminate"
+        echo "  record           - Interactive terminal recording until Enter is pressed"
+        echo "  cancel           - Cancel active recording without transcribing"
+        echo "  status           - Check current recording status"
+        exit 1
         ;;
 esac
+
+# Release lock and terminate process cleanly
+flock -u 200 2>/dev/null || true
+exit 0

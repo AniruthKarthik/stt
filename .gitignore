@@ -3,6 +3,7 @@ tmp/
 models/*.bin
 whisper.cpp/
 bin/whisperstt-hold
+bin/stt-daemon-bin
 
 # --- Audio & Transcription ---
 *.wav

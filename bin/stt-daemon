@@ -1,39 +1,24 @@
 #!/bin/bash
-# STT Trigger Daemon
-# Listens to all physical input devices for KEY_F8
+# STT Trigger Daemon Launcher
+# Ensures the lightweight C listener binary is built and runs it.
 
-# Find the directory where this script is located
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
+LISTENER_BIN="$BIN_DIR/stt-daemon-bin"
 WHISPERSTT_PATH="$BIN_DIR/whisperstt"
+SRC_C="$PROJECT_DIR/src/stt-daemon.c"
 
-# Kill any existing instances to avoid duplicates
-pkill -f "evtest" 2>/dev/null
-pkill -f "whisperstt" 2>/dev/null
-
-echo "Starting STT Trigger Daemon (Listening for F8 Key)..."
-
-# Find and listen to physical input devices only
-# We exclude "ydotoold" and other virtual devices to avoid loops
-for dev in /dev/input/event*; do
-    if [ -c "$dev" ] && [ -r "$dev" ]; then
-        NAME=$(cat /sys/class/input/$(basename "$dev")/device/name 2>/dev/null)
-        if [[ "$NAME" == *"ydotoold"* || "$NAME" == *"Virtual"* ]]; then
-            continue
-        fi
-        
-        (
-            stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" -v wp="$WHISPERSTT_PATH" '
-            /KEY_F8\), value 1/ { 
-                print "[Trigger ON: " n " (" d ")]"
-                system(wp " start") 
-            }
-            /KEY_F8\), value 0/ { 
-                print "[Trigger OFF: " n " (" d ")]"
-                system(wp " stop") 
-            }
-            '
-        ) &
+# Compile listener binary if missing or older than source
+if [ ! -x "$LISTENER_BIN" ] || [ "$SRC_C" -nt "$LISTENER_BIN" ]; then
+    if command -v gcc &>/dev/null; then
+        gcc -O2 "$SRC_C" -o "$LISTENER_BIN" 2>/dev/null || true
     fi
-done
+fi
 
-wait
+if [ -x "$LISTENER_BIN" ]; then
+    exec "$LISTENER_BIN" "$WHISPERSTT_PATH"
+fi
+
+echo "Error: Could not build or run STT daemon listener ($LISTENER_BIN)." >&2
+exit 1
