@@ -3,15 +3,15 @@
 A lightweight, offline, and secure Speech-to-Text solution optimized for Linux (Arch, Fedora, Ubuntu/Debian, and others). This tool allows you to transcribe speech locally and inject it directly into any active application.
 
 ## Key Features
-- **Toggle Trigger:** Press and hold **F8** to record, release to transcribe.
+- **Zero Idle Memory:** Uses **0 MB RAM** when idle. Runs strictly on-demand, transcribes, injects, and **kills itself** immediately.
+- **Single-Instance Enforcement:** Protected by kernel-level `flock` locks so only one instance runs at any given moment.
 - **100% Offline:** Uses `whisper.cpp` for local inference (no data leaves your machine).
-- **Inline Feedback:** Displays `recording...` at your cursor while recording.
+- **Inline Feedback & Notifications:** Displays `recording...` at your cursor and optional desktop notifications.
 - **Fast Injection:** Uses `ydotool` and clipboard synchronization for virtual input across Wayland and X11.
-- **Lightweight:** Minimal background overhead using a low-level event daemon.
 
 ## Prerequisites
 
-This project is compatible with most **Linux distributions** (Arch, Fedora, Ubuntu, Debian, openSUSE) using systemd.
+This project is compatible with most **Linux distributions** (Arch, Fedora, Ubuntu, Debian, openSUSE).
 
 The installer will attempt to automatically install dependencies for:
 - **Arch Linux** (`pacman -S alsa-utils wl-clipboard evtest make gcc cmake libnotify ydotool git curl`)
@@ -38,32 +38,54 @@ If you are on a different distribution, ensure you have these installed:
    - Detect your distribution and install missing dependencies.
    - Clone and build `whisper.cpp` (`whisper-cli`).
    - Download the base English model (`ggml-base.en.bin`).
-   - Configure background services (`ydotool` user/system service and `stt-daemon`).
-   - Set up necessary permissions and udev rules.
+   - Install the `stt` command into `~/.local/bin/stt`.
+   - Set up permissions and udev rules.
 
 3. **Finalize Permissions:**
    If the installer added you to the `input` group, you **must** log out and log back in (or run `newgrp input`) for the group permissions to take effect.
 
 ## Usage
 
-1. **Start the Service:**
-   The installation script automatically enables the user service. If it's not running:
-   ```bash
-   systemctl --user enable --now stt-daemon.service
-   ```
+### 1. On-Demand Toggle (Recommended - 0 MB Idle RAM)
+Run `stt` directly from your terminal or bind it to a hotkey in your window manager:
+- **First trigger:** Starts recording.
+- **Second trigger:** Stops recording, transcribes with `whisper.cpp`, types/pastes into your active window, and **kills itself**.
 
-2. **Record & Transcribe:**
-   - Open any text application (Terminal, Browser, Editor).
-   - Press and **hold F8**.
-   - You will see `recording...` appear at your cursor.
-   - Speak clearly.
-   - **Release F8**. The status text will be replaced by your transcription.
+```bash
+stt          # Toggles recording on/off
+stt status   # Displays current state (Idle / Recording)
+stt cancel   # Cancels active recording without transcribing
+```
 
-## Architecture & Configuration
+### 2. Window Manager Keybinds
 
-- **Daemon:** `bin/stt-daemon` listens to `/dev/input/event*` for F8 events with automatic keyboard device detection and clean signal trapping.
-- **Logic:** `bin/whisperstt` handles audio capture (`arecord`), local transcription (`whisper.cpp`), and typing/injection (`ydotool` with automatic user and system socket resolution).
-- **Trigger Key:** F8 was chosen as the default to avoid conflicts with modern "Copilot" keys, which often send complex macros (Meta+Shift+F23) that can interfere with synthetic typing.
+#### Hyprland (`~/.config/hypr/hyprland.conf`)
+- **Toggle Mode (Press F8 to record, press F8 again to transcribe):**
+  ```ini
+  bind = , F8, exec, stt
+  ```
+- **Hold-to-Talk Mode (Hold F8 to record, release F8 to transcribe):**
+  ```ini
+  bind = , F8, exec, stt start
+  bindr = , F8, exec, stt stop
+  ```
+
+#### Sway / i3 (`~/.config/sway/config` or `~/.config/i3/config`)
+```ini
+bindsym F8 exec stt
+```
+
+### 3. Optional Background Daemon
+If you prefer a global hardware event listener instead of a compositor keybind:
+```bash
+systemctl --user enable --now stt-daemon.service
+```
+
+## Architecture & Minimal Memory Footprint
+
+- **Single Process at a Time:** Every invocation is protected by `flock`. If a trigger is pressed while transcription is ongoing, redundant instances immediately exit.
+- **Self-Terminating:** Once audio is captured and transcribed, `whisper-cli` terminates, immediately releasing the model memory back to the OS.
+- **Socket Resolution:** Automatically resolves `ydotool` across user services (`$XDG_RUNTIME_DIR/.ydotool_socket`) and system services (`/tmp/.ydotool_socket`).
 
 ## Troubleshooting
 

@@ -22,9 +22,12 @@ echo "--- STT Installer (Linux Universal) ---"
 mkdir -p "$PROJECT_DIR/tmp"
 mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$PROJECT_DIR/models"
+mkdir -p "$HOME/.local/bin"
 
-# Make binaries executable
+# Make binaries executable and set up stt command
 chmod +x "$PROJECT_DIR/bin/stt-daemon" "$PROJECT_DIR/bin/whisperstt" 2>/dev/null || true
+ln -sf whisperstt "$PROJECT_DIR/bin/stt"
+ln -sf "$PROJECT_DIR/bin/stt" "$HOME/.local/bin/stt"
 
 # --- Distribution Detection & Dependency Installation ---
 install_dependencies() {
@@ -166,7 +169,7 @@ EOF"
     sudo systemctl enable --now ydotoold.service
 fi
 
-# Set up autostart stt-daemon (user service)
+# Install stt-daemon user service definition
 mkdir -p ~/.config/systemd/user/
 cat > ~/.config/systemd/user/stt-daemon.service <<EOF
 [Unit]
@@ -185,13 +188,23 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now stt-daemon.service
 
 echo "--------------------------------------------------"
 echo "Installation complete!"
-echo "The STT Daemon is running in the background."
-echo "Press and HOLD F8 to speak, release to transcribe."
-echo "Check logs at: $PROJECT_DIR/tmp/stt.log"
+echo ""
+echo "The 'stt' command is now installed at: ~/.local/bin/stt"
+echo ""
+echo "On-Demand Usage (Zero RAM when idle):"
+echo "  Run 'stt' once to start recording, run 'stt' again to stop and transcribe."
+echo "  Once the job is done, it terminates and frees all memory."
+echo ""
+echo "Desktop Keybind (e.g. Hyprland):"
+echo "  Toggle: bind = , F8, exec, stt"
+echo "  Hold:   bind = , F8, exec, stt start"
+echo "          bindr = , F8, exec, stt stop"
+echo ""
+echo "Optional persistent background daemon:"
+echo "  systemctl --user enable --now stt-daemon.service"
 echo "--------------------------------------------------"
 if ! id -nG 2>/dev/null | grep -qw "$INPUT_GROUP"; then
     echo "IMPORTANT: Your current session does not yet have '$INPUT_GROUP' active."

@@ -2,7 +2,8 @@
 # STT Trigger Daemon
 # Listens to physical keyboard input devices for KEY_F8
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
 WHISPERSTT_PATH="$BIN_DIR/whisperstt"
 TMP_DIR="$PROJECT_DIR/tmp"
