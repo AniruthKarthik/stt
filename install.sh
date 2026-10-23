@@ -25,8 +25,8 @@ mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$PROJECT_DIR/models"
 mkdir -p "$HOME/.local/bin"
 
-# Make binaries executable and set up stt command
-chmod +x "$PROJECT_DIR/bin/stt-daemon" "$PROJECT_DIR/bin/whisperstt" 2>/dev/null || true
+# Set up stt script and symlinks
+chmod +x "$PROJECT_DIR/bin/whisperstt" 2>/dev/null || true
 ln -sf whisperstt "$PROJECT_DIR/bin/stt"
 ln -sf "$PROJECT_DIR/bin/stt" "$HOME/.local/bin/stt"
 
@@ -54,7 +54,7 @@ install_dependencies() {
         sudo xbps-install -Sy alsa-utils wl-clipboard xclip evtest make gcc cmake libnotify ydotool git curl
     elif command -v emerge &> /dev/null; then
         echo "Detected Gentoo Linux (emerge)."
-        sudo emerge --ask=n media-sound/alsa-utils gui-apps/wl-clipboard x11-misc/xclip app-misc/evtest sys-devel/make dev-build/cmake x11-libs/libnotify app-misc/ydotool dev-vcs/git net-misc/curl
+        sudo emerge --ask=n media-sound/alsa-utils gui-apps/wl-clipboard x11-misc/xclip app-misc/evtest dev-build/cmake app-misc/ydotool dev-vcs/git net-misc/curl
     elif command -v eopkg &> /dev/null; then
         echo "Detected Solus Linux (eopkg)."
         sudo eopkg install -y alsa-utils wl-clipboard xclip evtest make g++ cmake libnotify ydotool git curl
@@ -115,6 +115,11 @@ if [ ! -f "$MODEL_DIR/ggml-base.en.bin" ]; then
     echo "Downloading whisper GGML model (base.en)..."
     curl -L "$MODEL_URL" -o "$MODEL_DIR/ggml-base.en.bin"
 fi
+
+# Build lightweight C stt-daemon listener
+echo "Building STT F8 listener daemon..."
+gcc -O2 "$PROJECT_DIR/src/stt-daemon.c" -o "$PROJECT_DIR/bin/stt-daemon-bin"
+chmod +x "$PROJECT_DIR/bin/stt-daemon" "$PROJECT_DIR/bin/stt-daemon-bin"
 
 # --- Permissions, Kernel Modules & Groups ---
 
@@ -194,7 +199,8 @@ EOF"
         sudo systemctl enable --now ydotoold.service
     fi
 
-    # Install stt-daemon unit file for optional global background listening
+    # Set up and enable stt-daemon user service
+    echo "Enabling STT F8 trigger daemon user service..."
     mkdir -p ~/.config/systemd/user/
     cat > ~/.config/systemd/user/stt-daemon.service <<EOF
 [Unit]
@@ -211,26 +217,28 @@ Environment="PATH=$PATH"
 [Install]
 WantedBy=default.target
 EOF
+
     systemctl --user daemon-reload
+    systemctl --user enable --now stt-daemon.service
 else
-    echo "Non-systemd or container environment detected. STT will auto-manage ydotoold on demand."
+    echo "Non-systemd or container environment detected. Starting stt-daemon in background..."
+    pkill -f "stt-daemon" 2>/dev/null || true
+    "$DAEMON_PATH" &
 fi
 
 echo "--------------------------------------------------"
 echo "Installation complete!"
 echo ""
-echo "Command installed: ~/.local/bin/stt"
+echo "F8 Trigger Status:"
+echo "  STT F8 Trigger Daemon is ACTIVE and running in the background."
+echo "  Press and hold F8 to speak (or tap F8 for hands-free toggle)."
+echo "  Release (or tap again) to transcribe and inject text."
 echo ""
-echo "Recommended Usage (0 MB Idle RAM):"
-echo "  Run 'stt' once to start recording."
-echo "  Run 'stt' again to transcribe, inject text, and terminate."
-echo ""
-echo "Desktop Keybind Examples:"
-echo "  Hyprland:  bind = , F8, exec, stt"
-echo "  Sway/i3:   bindsym F8 exec stt"
-echo "  GNOME/KDE: Map custom shortcut to: stt"
+echo "Command line shortcut:"
+echo "  stt          (Toggle recording on / off manually)"
+echo "  stt status   (Check status)"
 echo "--------------------------------------------------"
 if ! id -nG 2>/dev/null | grep -qw "$INPUT_GROUP"; then
     echo "NOTE: If you were just added to group '$INPUT_GROUP', please log out"
-    echo "and back in (or run 'newgrp $INPUT_GROUP') for permissions to apply."
+    echo "and back in (or run 'newgrp $INPUT_GROUP') for input permissions to apply."
 fi

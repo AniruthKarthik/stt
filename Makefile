@@ -4,21 +4,24 @@ MODEL_PATH := models/ggml-base.en.bin
 WHISPER_REPO := https://github.com/ggerganov/whisper.cpp
 NPROC := $(shell nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 
-.PHONY: all install build-whisper download-model fetch-whisper uninstall clean help
+.PHONY: all install build build-whisper build-daemon download-model fetch-whisper uninstall clean help
 
 all: install
 
 help:
 	@echo "Usage: make [target]"
 	@echo "  install           Full installation (fetch, build, download, service)"
-	@echo "  fetch-whisper     Clone whisper.cpp repository if missing"
+	@echo "  build             Build whisper.cpp and stt-daemon listener"
 	@echo "  build-whisper     Build whisper.cpp only"
+	@echo "  build-daemon      Build C stt-daemon listener only"
 	@echo "  download-model    Download the GGML model only"
 	@echo "  uninstall         Remove services and configurations"
 	@echo "  clean             Cleanup temporary files"
 
 install:
 	./install.sh
+
+build: build-whisper build-daemon
 
 fetch-whisper:
 	@if [ ! -f "whisper.cpp/CMakeLists.txt" ]; then \
@@ -32,6 +35,12 @@ fetch-whisper:
 build-whisper: fetch-whisper
 	@echo "Building whisper.cpp..."
 	cd whisper.cpp && mkdir -p build && cd build && cmake .. -DWHISPER_BUILD_TESTS=OFF && cmake --build . --config Release --target whisper-cli -j$(NPROC)
+
+build-daemon:
+	@echo "Building stt-daemon listener..."
+	mkdir -p bin
+	gcc -O2 src/stt-daemon.c -o bin/stt-daemon-bin
+	chmod +x bin/stt-daemon bin/stt-daemon-bin
 
 download-model:
 	@echo "Downloading model..."

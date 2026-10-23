@@ -1,63 +1,24 @@
 #!/bin/bash
-# STT Trigger Daemon
-# Listens to physical keyboard input devices for KEY_F8
+# STT Trigger Daemon Launcher
+# Ensures the lightweight C listener binary is built and runs it.
 
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_DIR="$(cd "$BIN_DIR/.." && pwd)"
+LISTENER_BIN="$BIN_DIR/stt-daemon-bin"
 WHISPERSTT_PATH="$BIN_DIR/whisperstt"
-TMP_DIR="$PROJECT_DIR/tmp"
-PID_FILE="$TMP_DIR/stt-daemon.pid"
+SRC_C="$PROJECT_DIR/src/stt-daemon.c"
 
-mkdir -p "$TMP_DIR"
-
-# Clean shutdown handler
-cleanup() {
-    trap - SIGTERM SIGINT EXIT
-    kill $(jobs -p) 2>/dev/null || true
-    rm -f "$PID_FILE"
-    exit 0
-}
-trap cleanup SIGTERM SIGINT EXIT
-
-# Kill any previous daemon instances
-if [ -f "$PID_FILE" ]; then
-    OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null && [ "$OLD_PID" -ne "$$" ]; then
-        kill "$OLD_PID" 2>/dev/null || true
+# Compile listener binary if missing or older than source
+if [ ! -x "$LISTENER_BIN" ] || [ "$SRC_C" -nt "$LISTENER_BIN" ]; then
+    if command -v gcc &>/dev/null; then
+        gcc -O2 "$SRC_C" -o "$LISTENER_BIN" 2>/dev/null || true
     fi
 fi
-echo $$ > "$PID_FILE"
 
-echo "Starting STT Trigger Daemon (Listening for F8 Key)..."
+if [ -x "$LISTENER_BIN" ]; then
+    exec "$LISTENER_BIN" "$WHISPERSTT_PATH"
+fi
 
-# Find and listen to physical keyboard input devices
-for dev in /dev/input/event*; do
-    [ -c "$dev" ] && [ -r "$dev" ] || continue
-
-    bn=$(basename "$dev")
-    NAME=$(cat "/sys/class/input/$bn/device/name" 2>/dev/null || echo "")
-
-    # Exclude virtual devices and non-keyboard peripherals
-    [[ "$NAME" == *"ydotoold"* || "$NAME" == *"Virtual"* ]] && continue
-    [[ "$NAME" == *"Mouse"* || "$NAME" == *"Touchpad"* ]] && continue
-
-    # Check for key capability
-    caps=$(cat "/sys/class/input/$bn/device/capabilities/key" 2>/dev/null || echo "0")
-    [ -z "$caps" ] || [ "$caps" = "0" ] && continue
-
-    (
-        stdbuf -oL evtest "$dev" 2>/dev/null | awk -v d="$dev" -v n="$NAME" -v wp="$WHISPERSTT_PATH" '
-        /KEY_F8\), value 1/ { 
-            print "[Trigger ON: " n " (" d ")]"
-            system(wp " start") 
-        }
-        /KEY_F8\), value 0/ { 
-            print "[Trigger OFF: " n " (" d ")]"
-            system(wp " stop") 
-        }
-        '
-    ) &
-done
-
-wait
+echo "Error: Could not build or run STT daemon listener ($LISTENER_BIN)." >&2
+exit 1
